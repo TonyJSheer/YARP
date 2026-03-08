@@ -1,0 +1,338 @@
+RAG API PROJECT – AGENT FRIENDLY BUILD GUIDE
+===========================================
+
+Goal
+----
+Build a simple Retrieval-Augmented Generation (RAG) backend service that:
+- uploads documents
+- chunks text
+- generates embeddings
+- stores them in PostgreSQL with pgvector
+- retrieves relevant chunks for a question
+- generates an answer with citations
+- streams the answer
+
+This guide is designed to be used with an AI coding agent (Claude, Codex, Cursor, etc.).
+Each step includes a prompt you can give the coding agent.
+
+Tech Stack
+----------
+Python 3.12
+FastAPI
+PostgreSQL
+pgvector
+Docker Compose
+OpenAI (or similar) for embeddings + LLM
+
+Directory Structure
+-------------------
+
+rag-api/
+  app/
+    main.py
+    config.py
+    db.py
+    models/
+    schemas/
+    api/
+    services/
+    providers/
+  tests/
+  Dockerfile
+  docker-compose.yml
+  requirements.txt
+  .env.example
+  README.md
+
+
+================================================
+STEP 1 — CREATE BASE PROJECT
+================================================
+
+Create a minimal FastAPI project with Docker and Postgres.
+
+Agent Prompt
+------------
+
+Create a FastAPI project with the following requirements:
+
+- Python 3.12
+- FastAPI app in app/main.py
+- health endpoint at GET /health
+- PostgreSQL connection module
+- Dockerfile
+- docker-compose.yml containing:
+  - API container
+  - Postgres container
+
+Expose port 8000 for the API.
+
+Success Criteria
+----------------
+docker compose up runs the API
+http://localhost:8000/health returns:
+{"status": "ok"}
+
+
+================================================
+STEP 2 — DATABASE SETUP
+================================================
+
+Add tables for documents and chunks.
+
+Agent Prompt
+------------
+
+Add SQLAlchemy models and migrations for:
+
+Table: documents
+- id UUID primary key
+- filename text
+- content_type text
+- sha256 text
+- status text
+- created_at timestamp
+
+Table: chunks
+- id UUID primary key
+- document_id UUID foreign key
+- chunk_index integer
+- page_number integer nullable
+- text text
+- embedding vector(1536)
+- metadata jsonb
+
+Enable the pgvector extension.
+
+Success Criteria
+----------------
+Database initializes with both tables.
+
+
+================================================
+STEP 3 — DOCUMENT UPLOAD API
+================================================
+
+Allow file upload.
+
+Agent Prompt
+------------
+
+Create endpoint:
+
+POST /documents
+
+Accept multipart file upload.
+Save file locally in ./data/uploads.
+Create a database record in documents table.
+
+Return JSON:
+
+{
+ "document_id": "...",
+ "status": "uploaded"
+}
+
+Success Criteria
+----------------
+Uploading a file stores metadata and saves the file locally.
+
+
+================================================
+STEP 4 — TEXT EXTRACTION + CHUNKING
+================================================
+
+Extract text and split it into chunks.
+
+Agent Prompt
+------------
+
+Implement a text chunking service with these rules:
+
+- target chunk size 700 tokens
+- overlap 80 tokens
+- avoid splitting sentences when possible
+
+Add ingestion service that:
+
+1. extracts text from txt, md, and pdf files
+2. splits into chunks
+3. stores chunks in database
+
+Success Criteria
+----------------
+Uploading a document produces chunk rows in the database.
+
+
+================================================
+STEP 5 — EMBEDDINGS
+================================================
+
+Generate embeddings for each chunk.
+
+Agent Prompt
+------------
+
+Create an embedding service that:
+
+- uses OpenAI embeddings API
+- batches requests
+- stores embedding vectors in the chunks table
+- retries once on failure
+
+Add environment variables:
+
+OPENAI_API_KEY
+OPENAI_EMBED_MODEL
+
+Success Criteria
+----------------
+Each chunk row contains an embedding vector.
+
+
+================================================
+STEP 6 — VECTOR RETRIEVAL
+================================================
+
+Retrieve relevant chunks for a question.
+
+Agent Prompt
+------------
+
+Create a retrieval service that:
+
+1. embeds the user query
+2. performs vector similarity search in PostgreSQL
+3. returns the top K chunks (default 5)
+
+Return chunk metadata including:
+- document id
+- page number
+- text snippet
+
+Success Criteria
+----------------
+Querying returns relevant chunks from stored documents.
+
+
+================================================
+STEP 7 — LLM ANSWER GENERATION
+================================================
+
+Generate answer using retrieved context.
+
+Agent Prompt
+------------
+
+Create service that:
+
+1. receives question and retrieved chunks
+2. builds a prompt with context
+3. sends request to LLM provider
+4. returns generated answer
+
+System prompt rules:
+
+- only answer from context
+- cite sources
+- say "I don't know" if answer not found
+
+Success Criteria
+----------------
+API returns answer with citations.
+
+
+================================================
+STEP 8 — QUERY ENDPOINT
+================================================
+
+Expose full RAG pipeline.
+
+Agent Prompt
+------------
+
+Create endpoint:
+
+POST /query
+
+Request:
+
+{
+ "question": "...",
+ "top_k": 5
+}
+
+Response:
+
+{
+ "answer": "...",
+ "citations": [
+   {
+     "document_id": "...",
+     "chunk_id": "...",
+     "page": 3,
+     "excerpt": "..."
+   }
+ ]
+}
+
+Success Criteria
+----------------
+Question returns answer grounded in document text.
+
+
+================================================
+STEP 9 — STREAMING RESPONSES
+================================================
+
+Stream answer tokens.
+
+Agent Prompt
+------------
+
+Create endpoint:
+
+POST /query/stream
+
+Use Server Sent Events.
+
+Stream tokens as the LLM generates them.
+
+Success Criteria
+----------------
+Client receives answer incrementally.
+
+
+================================================
+STEP 10 — TESTS
+================================================
+
+Agent Prompt
+------------
+
+Create tests for:
+
+- health endpoint
+- chunking logic
+- retrieval returns expected chunks
+- query endpoint returns citations
+
+Success Criteria
+----------------
+pytest runs successfully.
+
+
+================================================
+FINAL RESULT
+================================================
+
+Working system capable of:
+
+- Upload document
+- Ask question
+- Retrieve relevant text
+- Generate answer
+- Stream result
+- Return citations
+
+This demonstrates real-world AI backend architecture and RAG infrastructure.

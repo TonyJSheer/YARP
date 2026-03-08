@@ -1,0 +1,158 @@
+MacBook-Pro rag-api %  cd /Users/user/repos/rag_proj/rag-api
+MacBook-Pro rag-api % export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
+MacBook-Pro rag-api % uv run uvicorn app.main:app --reload
+
+
+MacBook-Pro rag_proj % curl -X POST http://localhost:8000/documents \
+    -F "file=@rag_agent_friedly_build.txt"
+curl: (26) Failed to open/read local data from file/application
+MacBook-Pro rag_proj % curl -X POST http://localhost:8000/documents \
+    -F "file=@./rag_agent_friendly_build.txt"
+{"document_id":"549807e3-263c-44cc-91c1-58bdf219ce33","status":"ready"}%                                                                               
+MacBook-Pro rag_proj % curl -X POST http://localhost:8000/query \
+    -H "Content-Type: application/json" \
+    -d '{"question": "What does the RAG API PROJECT do?"}
+quote> '
+{"answer":"Based on the provided documents, the RAG API PROJECT builds a simple Retrieval-Augmented Generation (RAG) backend service that:
+[doc:549807e3-263c-44cc-91c1-58bdf219ce33, page:N/A]
+
+- Uploads documents
+- Chunks text
+- Generates embeddings
+- Stores them in PostgreSQL with pgvector
+- Retrieves relevant chunks for a question
+- Generates an answer with citations
+- Streams the answer
+
+The final working system is capable of allowing users to upload documents,
+ask questions about them,
+retrieve relevant text,
+generate answers grounded in the documents,
+stream results,
+and return citations indicating the source of the information.
+[doc:549807e3-263c-44cc-91c1-58bdf219ce33, page:N/A]",
+"citations":[{"document_id":"549807e3-263c-44cc-91c1-58bdf219ce33","chunk_id":"e9e4400f-9892-4312-b393-0ea7b9d83849","page":null,"excerpt":"RAG API PROJECT – AGENT FRIENDLY BUILD GUIDE
+===========================================
+
+Goal
+----
+Build a simple Retrieval-Augmented Generation (RAG) backend service that:
+- uploads documents
+- chun"},{"document_id":"549807e3-263c-44cc-91c1-58bdf219ce33","chunk_id":"a01fcbbe-2e62-4d38-8119-47781eed69bb","page":null,"excerpt":"Return JSON:
+
+{
+ \"document_id\": \"...\",
+ \"status\": \"uploaded\"
+}
+
+Success Criteria
+----------------
+Uploading a file stores metadata and saves the file locally. ========================================="},{"document_id":"549807e3-263c-44cc-91c1-58bdf219ce33","chunk_id":"0cfed9da-3678-4c5c-897d-e9fffc3527a4","page":null,"excerpt":"Agent Prompt
+------------
+
+Create endpoint:
+
+POST /query
+
+Request:
+
+{
+ \"question\": \"...\",
+ \"top_k\": 5
+}
+
+Response:
+
+{
+ \"answer\": \"...\",
+ \"citations\": [
+   {
+     \"document_id\": \"...\",
+     \"chunk_id\":"},{"document_id":"62314232-3308-4770-95b2-9c20b93a851f","chunk_id":"558bd1ff-edf6-4da0-a4fa-1df4336e4e64","page":null,"excerpt":"DB record content"},{"document_id":"18bae7d4-490a-4316-b991-912a496f7af1","chunk_id":"c908a537-bcf6-4413-9f4d-cdb8acbbd982","page":null,"excerpt":"Embedding test sentence."}]}%                                                                        
+MacBook-Pro rag_proj % url -N -X POST http://localhost:8000/query/stream \
+    -H "Content-Type: application/json" \
+    -d '{"question": "What kind of tech stack is it built on?"}
+quote> '
+zsh: command not found: url
+MacBook-Pro rag_proj % curl -N -X POST http://localhost:8000/query/stream \
+    -H "Content-Type: application/json" \
+    -d '{"question": "What kind of tech stack is it built on?"}'
+data: According
+data:  to the RA
+data: G API
+data:  Project
+data:  guide
+data: , the tech stack consists
+data:  of:
+data:  [
+data: doc:549
+data: 807e3-263c-44
+data: cc-91c1-58b
+data: df219ce33, page:N
+data: /A]
+-
+data:  Python
+data:  
+data: 3.12
+data: 
+- FastAPI
+data: 
+- PostgreSQL
+- pg
+data: vector
+data: 
+- Docker
+data:  Compose
+- OpenAI (or
+data:  similar
+data: )
+data:  for embeddings +
+data:  LLM
+data: [DONE]
+
+MacBook-Pro rag_proj % curl -N -X POST http://localhost:8000/query \       
+    -H "Content-Type: application/json" \
+    -d '{"question": "What AI platform tech is the rag proj built on?"}'
+{"answer":"Based on the provided documents, the RAG project is built on the following AI platform tech:
+
+**OpenAI** — for embeddings and LLM generation. Specifically, the guide mentions:
+- Using \"OpenAI (or similar) for embeddings + LLM\" [doc:549807e3-263c-44cc-91c1-58bdf219ce33, page:N/A]
+- Environment variables for `OPENAI_API_KEY` and `OPENAI_EMBED_MODEL` [doc:549807e3-263c-44cc-91c1-58bdf219ce33, page:N/A]
+- An embedding service that \"uses OpenAI embeddings API\" [doc:549807e3-263c-44cc-91c1-58bdf219ce33, page:N/A]","citations":[{"document_id":"549807e3-263c-44cc-91c1-58bdf219ce33","chunk_id":"e9e4400f-9892-4312-b393-0ea7b9d83849","page":null,"excerpt":"RAG API PROJECT – AGENT FRIENDLY BUILD GUIDE
+===========================================
+
+Goal
+----
+Build a simple Retrieval-Augmented Generation (RAG) backend service that:
+- uploads documents
+- chun"},{"document_id":"549807e3-263c-44cc-91c1-58bdf219ce33","chunk_id":"0cfed9da-3678-4c5c-897d-e9fffc3527a4","page":null,"excerpt":"Agent Prompt
+------------
+
+Create endpoint:
+
+POST /query
+
+Request:
+
+{
+ \"question\": \"...\",
+ \"top_k\": 5
+}
+
+Response:
+
+{
+ \"answer\": \"...\",
+ \"citations\": [
+   {
+     \"document_id\": \"...\",
+     \"chunk_id\":"},{"document_id":"549807e3-263c-44cc-91c1-58bdf219ce33","chunk_id":"a01fcbbe-2e62-4d38-8119-47781eed69bb","page":null,"excerpt":"Return JSON:
+
+{
+ \"document_id\": \"...\",
+ \"status\": \"uploaded\"
+}
+
+Success Criteria
+----------------
+Uploading a file stores metadata and saves the file locally. ========================================="},{"document_id":"62314232-3308-4770-95b2-9c20b93a851f","chunk_id":"558bd1ff-edf6-4da0-a4fa-1df4336e4e64","page":null,"excerpt":"DB record content"},{"document_id":"18bae7d4-490a-4316-b991-912a496f7af1","chunk_id":"c908a537-bcf6-4413-9f4d-cdb8acbbd982","page":null,"excerpt":"Embedding test sentence."}]}%        
