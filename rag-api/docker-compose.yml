@@ -9,10 +9,51 @@ services:
       - OPENAI_EMBED_MODEL=${OPENAI_EMBED_MODEL:-text-embedding-ada-002}
       - OPENAI_CHAT_MODEL=${OPENAI_CHAT_MODEL:-gpt-4o}
       - UPLOAD_DIR=/data/uploads
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - uploads:/data/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mcp:
+    build: .
+    command: uv run rag-mcp --transport http --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://rag:rag@postgres:5432/rag
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - UPLOAD_DIR=/data/uploads
+      - JWT_SECRET=${JWT_SECRET}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: python -m app.worker
+    environment:
+      - DATABASE_URL=postgresql://rag:rag@postgres:5432/rag
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - UPLOAD_DIR=/data/uploads
+      - JWT_SECRET=${JWT_SECRET}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   postgres:
@@ -31,22 +72,15 @@ services:
       timeout: 5s
       retries: 5
 
-  mcp:
-    build: .
-    command: uv run rag-mcp --transport http --port 8001
+  redis:
+    image: redis:7-alpine
     ports:
-      - "8001:8001"
-    environment:
-      - DATABASE_URL=postgresql://rag:rag@postgres:5432/rag
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - UPLOAD_DIR=/data/uploads
-      - JWT_SECRET=${JWT_SECRET}
-      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
-    volumes:
-      - uploads:/data/uploads
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   pgdata:

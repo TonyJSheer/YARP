@@ -1,9 +1,11 @@
 import msgspec
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
+from app.models.chunk import Chunk
 from app.services import document_service, ingestion
 from app.services.auth import get_current_account_id
 from app.services.storage import get_storage_service
@@ -29,11 +31,11 @@ async def upload_document(
     """Upload a document for ingestion.
 
     Accepts a multipart file upload (.txt, .md, .pdf).
-    Runs the full extraction + chunking pipeline and returns document_id
-    with status='chunked'.
+    Enqueues the ingestion job and returns document_id immediately
+    with status='processing'.
     """
     try:
-        doc_id = ingestion.ingest(file, account_id, db)
+        doc_id = ingestion.enqueue_ingest(file, account_id, db)
     except ingestion.UnsupportedFileTypeError:
         return JSONResponse(
             status_code=400,
@@ -45,18 +47,41 @@ async def upload_document(
                 }
             },
         )
-    except Exception:
-        return JSONResponse(
-            status_code=422,
-            content={
+    return {"document_id": str(doc_id), "status": "processing"}
+
+
+@router.get("/{document_id}", response_model=None)
+async def get_document(
+    document_id: str,
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+) -> dict[str, object] | JSONResponse:
+    """Get document detail including current ingestion status."""
+    doc = document_service.get_document(document_id, account_id, db)
+    if doc is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
                 "error": {
-                    "code": "ingestion_failed",
-                    "message": "Failed to process the uploaded file.",
+                    "code": "not_found",
+                    "message": "Document not found",
                     "field": None,
                 }
             },
         )
-    return {"document_id": str(doc_id), "status": "ready"}
+
+    chunk_count: int = (
+        db.query(func.count(Chunk.id)).filter(Chunk.document_id == doc.id).scalar() or 0
+    )
+
+    return {
+        "document_id": str(doc.id),
+        "filename": doc.filename,
+        "status": doc.status,
+        "created_at": doc.created_at.isoformat(),
+        "chunk_count": chunk_count,
+        "error_message": doc.error_message,
+    }
 
 
 @router.delete("/{document_id}", status_code=204, response_model=None)

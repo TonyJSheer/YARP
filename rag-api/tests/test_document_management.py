@@ -10,6 +10,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models.chunk import Chunk
 from app.models.document import Document
+from app.services import ingestion
 
 FAKE_VECTOR = [0.1] * 768
 
@@ -109,7 +110,12 @@ def test_list_documents_includes_chunk_count(
 ) -> None:
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
 
-    upload_doc(client, unique_headers, content=b"Sentence one. Sentence two. Sentence three.")
+    content = b"Sentence one. Sentence two. Sentence three."
+    doc_id = upload_doc(client, unique_headers, content=content)
+
+    # Simulate the worker completing ingestion so chunks exist
+    with SessionLocal() as db:
+        ingestion.run_ingest_job(doc_id, db)
 
     response = client.get("/documents", headers=unique_headers)
 
@@ -179,6 +185,10 @@ def test_delete_removes_chunks(
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
 
     doc_id = upload_doc(client, unique_headers, content=b"Some text for chunking here.")
+
+    # Simulate the worker completing ingestion so chunks exist
+    with SessionLocal() as db:
+        ingestion.run_ingest_job(doc_id, db)
 
     # Verify chunks exist
     with SessionLocal() as session:

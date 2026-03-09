@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
+    redis_url: str = "redis://localhost:6379/0"
 
 
 @lru_cache

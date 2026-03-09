@@ -89,8 +89,7 @@ async def test_upload_document_tool(
     result = await upload_document(filename="test.txt", content_b64=TEST_CONTENT_B64)
 
     assert "document_id" in result
-    assert result["status"] == "ready"
-    assert result["chunk_count"] >= 1
+    assert result["status"] == "processing"
 
     with SessionLocal() as db:
         doc = db.get(Document, uuid.UUID(result["document_id"]))

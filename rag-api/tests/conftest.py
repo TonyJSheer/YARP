@@ -13,9 +13,19 @@ os.environ.setdefault("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
 os.environ.setdefault("EMBED_MODEL", "all-mpnet-base-v2")
 os.environ.setdefault("UPLOAD_DIR", "./data/test_uploads")
 os.environ.setdefault("JWT_SECRET", "test-secret")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+
+from unittest.mock import patch  # noqa: E402
 
 from app.main import app  # noqa: E402
 from app.services import auth  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def mock_redis_enqueue() -> Generator[None, None, None]:
+    """Patch job_queue.enqueue globally so no test needs a live Redis."""
+    with patch("app.services.job_queue.enqueue"):
+        yield
 
 
 @pytest.fixture

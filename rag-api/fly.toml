@@ -3,9 +3,10 @@ primary_region = "syd"
 
 [build]
 
-# Two process groups:
-#   api — REST API on port 8000, publicly accessible via HTTPS on fly.dev
-#   mcp — MCP HTTP server on port 8001, internal only (see NOTE below)
+# Three process groups:
+#   api    — REST API on port 8000, publicly accessible via HTTPS on fly.dev
+#   mcp    — MCP HTTP server on port 8001, internal only (see NOTE below)
+#   worker — ingestion worker, no ports (Redis BRPOP loop)
 #
 # NOTE on MCP external access:
 #   Fly.io routes external HTTPS traffic by hostname, not port. A second HTTPS port
@@ -23,8 +24,9 @@ primary_region = "syd"
 #
 #   Do NOT add secrets here. Set them via: fly secrets set KEY=value ...
 [processes]
-  api = "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"
-  mcp = "uv run rag-mcp --transport http --host 0.0.0.0 --port 8001"
+  api    = "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  mcp    = "uv run rag-mcp --transport http --host 0.0.0.0 --port 8001"
+  worker = "python -m app.worker"
 
 [http_service]
   internal_port = 8000

@@ -59,22 +59,25 @@ def get_account_id() -> str:
 async def upload_document(filename: str, content_b64: str) -> dict[str, Any]:
     """Upload a document to your RAG knowledge base.
 
-    The document will be chunked and embedded automatically.
+    The document is queued for ingestion and processed in the background.
     content_b64 must be the base64-encoded file content.
     Supported extensions: .txt, .md, .pdf
+
+    Returns immediately with status='processing'. Poll get_document_status()
+    until status is 'ready' before querying.
     """
     account_id = get_account_id()
     data = base64.b64decode(content_b64)
 
-    def _run() -> tuple[str, int]:
+    def _run() -> str:
         from app.db import SessionLocal
 
         with SessionLocal() as db:
-            doc_id, chunk_count = ingestion.ingest_from_bytes(filename, data, account_id, db)
-        return str(doc_id), chunk_count
+            doc_id = ingestion.enqueue_ingest_from_bytes(filename, data, account_id, db)
+        return str(doc_id)
 
-    doc_id_str, chunk_count = await asyncio.to_thread(_run)
-    return {"document_id": doc_id_str, "status": "ready", "chunk_count": chunk_count}
+    doc_id_str = await asyncio.to_thread(_run)
+    return {"document_id": doc_id_str, "status": "processing"}
 
 
 @mcp.tool()
@@ -139,6 +142,31 @@ async def list_documents() -> dict[str, Any]:
 
     documents = await asyncio.to_thread(_run)
     return {"documents": documents}
+
+
+@mcp.tool()
+async def get_document_status(document_id: str) -> dict[str, Any]:
+    """Check the ingestion status of a document.
+
+    Returns status: 'processing' | 'ready' | 'failed'.
+    Poll this after upload_document until status is 'ready'.
+    """
+    account_id = get_account_id()
+
+    def _run() -> dict[str, Any]:
+        from app.db import SessionLocal
+
+        with SessionLocal() as db:
+            doc = document_service.get_document(document_id, account_id, db)
+            if doc is None:
+                raise ValueError("not_found")
+            return {
+                "document_id": document_id,
+                "status": doc.status,
+                "error": doc.error_message,
+            }
+
+    return await asyncio.to_thread(_run)
 
 
 @mcp.tool()

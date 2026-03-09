@@ -38,6 +38,19 @@ def list_documents(account_id: str, db: Session) -> list[DocumentListItem]:
     ]
 
 
+def get_document(
+    document_id: str,
+    account_id: str,
+    db: Session,
+) -> Document | None:
+    """Return the document if it belongs to account_id, else None."""
+    return (
+        db.query(Document)
+        .filter(Document.id == document_id, Document.account_id == account_id)
+        .first()
+    )
+
+
 def delete_document(
     document_id: str,
     account_id: str,

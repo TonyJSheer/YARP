@@ -16,3 +16,12 @@ class DocumentListItem(msgspec.Struct):
 
 class DocumentListResponse(msgspec.Struct):
     documents: list[DocumentListItem]
+
+
+class DocumentDetailResponse(msgspec.Struct):
+    document_id: str
+    filename: str
+    status: str
+    created_at: str
+    chunk_count: int
+    error_message: str | None
