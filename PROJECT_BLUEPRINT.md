@@ -325,19 +325,28 @@ Phase 2+: containerised deployment to a simple platform (Fly.io, Railway, or ECS
 - [x] Step 9: POST /query/stream SSE endpoint
 - [x] Step 10: Test suite
 
-### Phase 2 — Production Hardening
+### Phase 2 — MCP Server + Multi-Tenancy
 
-- Async ingestion worker (Redis + worker service)
-- API key authentication
-- Document management API (list, delete, re-index)
-- S3 file storage
+> **Goal change**: Phase 2 pivots from "production hardening" to delivering the RAG pipeline as an MCP server. Redis workers and cloud deployment are deferred to Phase 3.
+
+- [ ] P2-01: Multi-tenancy schema (add `account_id` to documents, migration, scoped queries)
+- [ ] P2-02: JWT auth service (Bearer token → account_id; MCP_AUTH_TOKEN env var fallback)
+- [ ] P2-03: Storage service refactor (account-scoped paths; S3 backend support)
+- [ ] P2-04: Document management endpoints (GET /documents, DELETE /documents/{id})
+- [ ] P2-05: MCP server (stdio + HTTP transports; tools: upload, query, list, delete)
+- [ ] P2-06: Phase 2 test suite (integration tests, CI updates)
+
+See `rag-api/docs/PHASE2_PLAN.md` for full architecture and rationale.
+Task specs: `rag-api/tasks/task_p2_01_*.md` through `task_p2_06_*.md`
+
+### Phase 3 — Async + Search Quality + Deployment
+
+- Async ingestion worker (Redis + worker service) — for large files
 - Cloud deployment (Fly.io or ECS Fargate)
-
-### Phase 3 — Search Quality
-
 - Hybrid search (BM25 + vector)
 - Reranking (Cohere or local model)
 - Metadata filtering
+- OAuth2 / token issuance service
 
 ---
 
