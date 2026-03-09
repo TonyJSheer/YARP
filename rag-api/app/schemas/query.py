@@ -12,6 +12,7 @@ class QueryRequest(msgspec.Struct):
     question: str
     top_k: int = 5
     search_mode: str = "hybrid"  # "vector" | "bm25" | "hybrid"
+    rerank: bool = False
 
 
 class QueryResponse(msgspec.Struct):

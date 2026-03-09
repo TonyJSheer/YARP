@@ -40,6 +40,7 @@ async def query_endpoint(
         top_k=req.top_k,
         search_mode=req.search_mode,
         query_text=req.question,
+        rerank=req.rerank,
     )
     answer, cited_chunks = generation.generate_answer(req.question, chunks)
 
@@ -81,6 +82,7 @@ async def query_stream(
         top_k=req.top_k,
         search_mode=req.search_mode,
         query_text=req.question,
+        rerank=req.rerank,
     )
 
     def event_generator() -> Iterator[str]:

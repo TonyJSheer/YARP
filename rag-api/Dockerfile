@@ -17,6 +17,11 @@ COPY alembic.ini .
 ARG EMBED_MODEL=all-mpnet-base-v2
 RUN uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBED_MODEL}')"
 
+# Pre-download the rerank model at build time (~80MB) — no download at runtime.
+# Override at build time: docker build --build-arg RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2 .
+ARG RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+RUN uv run python -c "from sentence_transformers import CrossEncoder; CrossEncoder('${RERANK_MODEL}')"
+
 EXPOSE 8000
 
 CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

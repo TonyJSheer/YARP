@@ -6,6 +6,7 @@ Run: docker compose up postgres -d && make migrate
 
 import uuid
 from collections.abc import Generator
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy.orm import Session
@@ -14,6 +15,24 @@ from app.db import SessionLocal
 from app.models.chunk import Chunk
 from app.models.document import Document
 from app.services.retrieval import MAX_TOP_K, RetrievedChunk, _bm25_search, retrieve
+from app.services.reranking import rerank
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_chunk(text: str, score: float = 0.5) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        chunk_index=0,
+        page_number=None,
+        text=text,
+        score=score,
+        filename="test.txt",
+    )
 
 
 @pytest.fixture()

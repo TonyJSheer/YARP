@@ -34,6 +34,7 @@ def retrieve(
     top_k: int = 5,
     search_mode: str = "hybrid",
     query_text: str = "",
+    rerank: bool = False,
 ) -> list[RetrievedChunk]:
     """Find the top-K most relevant chunks, scoped to account_id.
 
@@ -44,6 +45,9 @@ def retrieve(
 
     If query_text is empty and the mode requires BM25, falls back to vector.
     top_k is capped at MAX_TOP_K.
+
+    When rerank=True, fetches top_k * 4 candidates then re-scores them with a
+    cross-encoder and returns the top_k highest-scoring results.
     """
     top_k = min(top_k, MAX_TOP_K)
 
@@ -51,12 +55,23 @@ def retrieve(
     if not query_text.strip() and search_mode in ("bm25", "hybrid"):
         search_mode = "vector"
 
+    # Fetch a wider candidate pool when reranking so the cross-encoder has
+    # more material to work with.
+    fetch_k = top_k * 4 if rerank else top_k
+
     if search_mode == "vector":
-        return _vector_search(query_embedding, account_id, db, top_k)
+        results = _vector_search(query_embedding, account_id, db, fetch_k)
     elif search_mode == "bm25":
-        return _bm25_search(query_text, account_id, db, top_k)
+        results = _bm25_search(query_text, account_id, db, fetch_k)
     else:  # hybrid
-        return _hybrid_search(query_embedding, query_text, account_id, db, top_k)
+        results = _hybrid_search(query_embedding, query_text, account_id, db, fetch_k)
+
+    if rerank and results:
+        from app.services.reranking import rerank as do_rerank
+
+        results = do_rerank(query_text or "", results, top_k)
+
+    return results[:top_k]
 
 
 # ---------------------------------------------------------------------------

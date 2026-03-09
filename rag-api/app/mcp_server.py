@@ -85,6 +85,7 @@ async def query_documents(
     question: str,
     top_k: int = 5,
     search_mode: str = "hybrid",
+    rerank: bool = False,
 ) -> dict[str, Any]:
     """Search your knowledge base and return relevant document chunks.
 
@@ -93,6 +94,7 @@ async def query_documents(
     Does not generate an answer; the caller synthesises the response.
 
     search_mode: "vector" | "bm25" | "hybrid" (default: "hybrid")
+    rerank: re-score candidates with a cross-encoder for higher precision (default: False)
     """
     account_id = get_account_id()
 
@@ -108,6 +110,7 @@ async def query_documents(
                 top_k=top_k,
                 search_mode=search_mode,
                 query_text=question,
+                rerank=rerank,
             )
 
     chunks = await asyncio.to_thread(_run)

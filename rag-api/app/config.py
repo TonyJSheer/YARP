@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     redis_url: str = "redis://localhost:6379/0"
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 
 @lru_cache
