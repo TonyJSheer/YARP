@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 
-from app.routers import documents, health, query
+from app.routers import collections, documents, health, query
 
 
 @asynccontextmanager
@@ -30,4 +30,5 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 app.include_router(health.router)
 app.include_router(documents.router)
+app.include_router(collections.router)
 app.include_router(query.router)

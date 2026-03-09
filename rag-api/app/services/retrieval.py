@@ -8,6 +8,7 @@ Supports three search modes:
 
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -35,6 +36,7 @@ def retrieve(
     search_mode: str = "hybrid",
     query_text: str = "",
     rerank: bool = False,
+    collection: str | None = None,
 ) -> list[RetrievedChunk]:
     """Find the top-K most relevant chunks, scoped to account_id.
 
@@ -45,6 +47,8 @@ def retrieve(
 
     If query_text is empty and the mode requires BM25, falls back to vector.
     top_k is capped at MAX_TOP_K.
+
+    When collection is not None, results are filtered to that collection only.
 
     When rerank=True, fetches top_k * 4 candidates then re-scores them with a
     cross-encoder and returns the top_k highest-scoring results.
@@ -60,11 +64,13 @@ def retrieve(
     fetch_k = top_k * 4 if rerank else top_k
 
     if search_mode == "vector":
-        results = _vector_search(query_embedding, account_id, db, fetch_k)
+        results = _vector_search(query_embedding, account_id, db, fetch_k, collection)
     elif search_mode == "bm25":
-        results = _bm25_search(query_text, account_id, db, fetch_k)
+        results = _bm25_search(query_text, account_id, db, fetch_k, collection)
     else:  # hybrid
-        results = _hybrid_search(query_embedding, query_text, account_id, db, fetch_k)
+        results = _hybrid_search(
+            query_embedding, query_text, account_id, db, fetch_k, collection
+        )
 
     if rerank and results:
         from app.services.reranking import rerank as do_rerank
@@ -91,18 +97,35 @@ def _row_to_chunk(row: object) -> RetrievedChunk:
     )
 
 
+def _collection_clause(collection: str | None) -> str:
+    """Return SQL fragment for collection filter (empty string if not filtering)."""
+    return "AND d.collection = :collection" if collection is not None else ""
+
+
+def _base_params(
+    account_id: str, collection: str | None, **extra: Any
+) -> dict[str, Any]:
+    """Build the base parameter dict, including collection only when filtering."""
+    params: dict[str, Any] = {"account_id": account_id, **extra}
+    if collection is not None:
+        params["collection"] = collection
+    return params
+
+
 def _vector_search(
     query_embedding: list[float],
     account_id: str,
     db: Session,
     top_k: int,
+    collection: str | None = None,
 ) -> list[RetrievedChunk]:
     """pgvector cosine similarity search, filtered by account_id."""
     vector_str = f"[{','.join(str(v) for v in query_embedding)}]"
+    coll_clause = _collection_clause(collection)
 
     rows = db.execute(
         text(
-            """
+            f"""
             SELECT c.id, c.document_id, c.chunk_index, c.page_number, c.text,
                    1 - (c.embedding <=> CAST(:vec AS vector)) AS score,
                    d.filename
@@ -110,11 +133,12 @@ def _vector_search(
             JOIN documents d ON c.document_id = d.id
             WHERE c.embedding IS NOT NULL
               AND d.account_id = :account_id
+              {coll_clause}
             ORDER BY c.embedding <=> CAST(:vec AS vector)
             LIMIT :k
             """
         ),
-        {"vec": vector_str, "k": top_k, "account_id": account_id},
+        _base_params(account_id, collection, vec=vector_str, k=top_k),
     ).fetchall()
 
     return [_row_to_chunk(row) for row in rows]
@@ -125,11 +149,14 @@ def _bm25_search(
     account_id: str,
     db: Session,
     top_k: int,
+    collection: str | None = None,
 ) -> list[RetrievedChunk]:
     """PostgreSQL full-text search using tsvector / tsquery, filtered by account_id."""
+    coll_clause = _collection_clause(collection)
+
     rows = db.execute(
         text(
-            """
+            f"""
             SELECT
                 c.id, c.document_id, c.chunk_index, c.page_number, c.text,
                 d.filename,
@@ -139,11 +166,12 @@ def _bm25_search(
             CROSS JOIN (SELECT plainto_tsquery('english', :query_text) AS query) q
             WHERE c.search_vector @@ q.query
               AND d.account_id = :account_id
+              {coll_clause}
             ORDER BY score DESC
             LIMIT :top_k
             """
         ),
-        {"query_text": query_text, "account_id": account_id, "top_k": top_k},
+        _base_params(account_id, collection, query_text=query_text, top_k=top_k),
     ).fetchall()
 
     return [_row_to_chunk(row) for row in rows]
@@ -155,11 +183,12 @@ def _hybrid_search(
     account_id: str,
     db: Session,
     top_k: int,
+    collection: str | None = None,
 ) -> list[RetrievedChunk]:
     """Reciprocal Rank Fusion of vector + BM25 results."""
     # Fetch candidates from both paths (wider pool for better fusion)
-    vector_results = _vector_search(query_embedding, account_id, db, top_k=20)
-    bm25_results = _bm25_search(query_text, account_id, db, top_k=20)
+    vector_results = _vector_search(query_embedding, account_id, db, top_k=20, collection=collection)
+    bm25_results = _bm25_search(query_text, account_id, db, top_k=20, collection=collection)
 
     scores: dict[str, float] = {}
     chunk_map: dict[str, RetrievedChunk] = {}

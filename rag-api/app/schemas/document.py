@@ -1,3 +1,5 @@
+from typing import Any
+
 import msgspec
 
 
@@ -12,6 +14,8 @@ class DocumentListItem(msgspec.Struct):
     status: str
     created_at: str
     chunk_count: int
+    collection: str
+    metadata: dict[str, Any] | None = None
 
 
 class DocumentListResponse(msgspec.Struct):
@@ -25,3 +29,12 @@ class DocumentDetailResponse(msgspec.Struct):
     created_at: str
     chunk_count: int
     error_message: str | None
+
+
+class CollectionItem(msgspec.Struct):
+    name: str
+    document_count: int
+
+
+class CollectionListResponse(msgspec.Struct):
+    collections: list[CollectionItem]

@@ -16,6 +16,7 @@ Sync path (kept for backward-compat / direct test use):
 import hashlib
 import uuid
 from pathlib import Path
+from typing import Any
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
@@ -25,7 +26,7 @@ from app.models.document import Document
 from app.services import chunking, embedding
 from app.services.storage import get_storage_service
 
-SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf"}
+SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".html", ".csv"}
 
 
 class UnsupportedFileTypeError(Exception):
@@ -37,7 +38,12 @@ class UnsupportedFileTypeError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def enqueue_ingest(file: UploadFile, account_id: str, db: Session) -> uuid.UUID:
+def enqueue_ingest(
+    file: UploadFile,
+    account_id: str,
+    db: Session,
+    collection: str = "default",
+) -> uuid.UUID:
     """Save file, create document record with status='processing', enqueue job.
 
     Returns document_id immediately — ingestion runs in the background worker.
@@ -45,7 +51,7 @@ def enqueue_ingest(file: UploadFile, account_id: str, db: Session) -> uuid.UUID:
     """
     from app.services import job_queue
 
-    doc, _ = save_and_record(file, account_id, db)
+    doc, _ = save_and_record(file, account_id, db, collection=collection)
     doc.status = "processing"
     db.commit()
     job_queue.enqueue(str(doc.id))
@@ -57,6 +63,8 @@ def enqueue_ingest_from_bytes(
     data: bytes,
     account_id: str,
     db: Session,
+    collection: str = "default",
+    metadata: dict[str, Any] | None = None,
 ) -> uuid.UUID:
     """Save bytes, create document record with status='processing', enqueue job.
 
@@ -83,6 +91,8 @@ def enqueue_ingest_from_bytes(
         sha256=sha256_hex,
         storage_key=storage_key,
         status="processing",
+        collection=collection,
+        doc_metadata=metadata,
     )
     db.add(doc)
     db.commit()
@@ -151,12 +161,17 @@ def run_ingest_job(document_id: str, db: Session) -> None:
 # ---------------------------------------------------------------------------
 
 
-def ingest(file: UploadFile, account_id: str, db: Session) -> uuid.UUID:
+def ingest(
+    file: UploadFile,
+    account_id: str,
+    db: Session,
+    collection: str = "default",
+) -> uuid.UUID:
     """Ingest an uploaded file through the full pipeline synchronously.
 
     Kept for backward-compat and direct test use.
     """
-    doc, _ = save_and_record(file, account_id, db)
+    doc, _ = save_and_record(file, account_id, db, collection=collection)
     doc.status = "processing"
     db.commit()
     run_ingest_job(str(doc.id), db)
@@ -168,6 +183,8 @@ def ingest_from_bytes(
     data: bytes,
     account_id: str,
     db: Session,
+    collection: str = "default",
+    metadata: dict[str, Any] | None = None,
 ) -> tuple[uuid.UUID, int]:
     """Ingest raw bytes through the full pipeline synchronously.
 
@@ -191,6 +208,8 @@ def ingest_from_bytes(
         sha256=sha256_hex,
         storage_key=storage_key,
         status="processing",
+        collection=collection,
+        doc_metadata=metadata,
     )
     db.add(doc)
     db.commit()
@@ -207,14 +226,19 @@ def ingest_from_bytes(
 # ---------------------------------------------------------------------------
 
 
-def save_and_record(file: UploadFile, account_id: str, db: Session) -> tuple[Document, str]:
+def save_and_record(
+    file: UploadFile,
+    account_id: str,
+    db: Session,
+    collection: str = "default",
+) -> tuple[Document, str]:
     """Save an uploaded file via the storage service and create a documents DB record.
 
     Validates the file extension, saves the file via the configured storage backend,
     computes sha256, and inserts a Document row with status='uploaded'.
 
     Returns (document, storage_key).
-    Raises UnsupportedFileTypeError for non-txt/md/pdf files.
+    Raises UnsupportedFileTypeError for non-supported files.
     """
     ext = Path(file.filename or "").suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
@@ -229,6 +253,7 @@ def save_and_record(file: UploadFile, account_id: str, db: Session) -> tuple[Doc
         sha256=sha256,
         storage_key=storage_key,
         status="uploaded",
+        collection=collection,
     )
     db.add(doc)
     db.commit()

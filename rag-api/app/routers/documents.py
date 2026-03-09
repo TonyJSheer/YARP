@@ -1,5 +1,5 @@
 import msgspec
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -25,24 +25,27 @@ async def list_documents(
 @router.post("", status_code=201, response_model=None)
 async def upload_document(
     file: UploadFile,
+    collection: str = Form(default="default"),
     db: Session = Depends(get_db),
     account_id: str = Depends(get_current_account_id),
 ) -> dict[str, str] | JSONResponse:
     """Upload a document for ingestion.
 
-    Accepts a multipart file upload (.txt, .md, .pdf).
+    Accepts a multipart file upload (.txt, .md, .pdf, .docx, .html, .csv).
     Enqueues the ingestion job and returns document_id immediately
     with status='processing'.
+
+    Note: .doc (old Word format) is not supported — use .docx only.
     """
     try:
-        doc_id = ingestion.enqueue_ingest(file, account_id, db)
+        doc_id = ingestion.enqueue_ingest(file, account_id, db, collection=collection)
     except ingestion.UnsupportedFileTypeError:
         return JSONResponse(
             status_code=400,
             content={
                 "error": {
                     "code": "unsupported_file_type",
-                    "message": "Only .txt, .md, and .pdf files are supported",
+                    "message": "Supported types: .txt, .md, .pdf, .docx, .html, .csv",
                     "field": "file",
                 }
             },

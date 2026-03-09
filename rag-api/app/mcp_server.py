@@ -56,12 +56,21 @@ def get_account_id() -> str:
 
 
 @mcp.tool()
-async def upload_document(filename: str, content_b64: str) -> dict[str, Any]:
+async def upload_document(
+    filename: str,
+    content_b64: str,
+    collection: str = "default",
+    metadata: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Upload a document to your RAG knowledge base.
 
     The document is queued for ingestion and processed in the background.
     content_b64 must be the base64-encoded file content.
-    Supported extensions: .txt, .md, .pdf
+    Supported extensions: .txt, .md, .pdf, .docx, .html, .csv
+    Note: .doc (old Word format) is not supported — use .docx only.
+
+    collection: optional group name (default: "default")
+    metadata: optional key-value pairs stored with the document
 
     Returns immediately with status='processing'. Poll get_document_status()
     until status is 'ready' before querying.
@@ -73,7 +82,14 @@ async def upload_document(filename: str, content_b64: str) -> dict[str, Any]:
         from app.db import SessionLocal
 
         with SessionLocal() as db:
-            doc_id = ingestion.enqueue_ingest_from_bytes(filename, data, account_id, db)
+            doc_id = ingestion.enqueue_ingest_from_bytes(
+                filename,
+                data,
+                account_id,
+                db,
+                collection=collection,
+                metadata=metadata,
+            )
         return str(doc_id)
 
     doc_id_str = await asyncio.to_thread(_run)
@@ -86,6 +102,7 @@ async def query_documents(
     top_k: int = 5,
     search_mode: str = "hybrid",
     rerank: bool = False,
+    collection: str | None = None,
 ) -> dict[str, Any]:
     """Search your knowledge base and return relevant document chunks.
 
@@ -95,6 +112,7 @@ async def query_documents(
 
     search_mode: "vector" | "bm25" | "hybrid" (default: "hybrid")
     rerank: re-score candidates with a cross-encoder for higher precision (default: False)
+    collection: limit search to a specific collection (default: None = all collections)
     """
     account_id = get_account_id()
 
@@ -111,6 +129,7 @@ async def query_documents(
                 search_mode=search_mode,
                 query_text=question,
                 rerank=rerank,
+                collection=collection,
             )
 
     chunks = await asyncio.to_thread(_run)
@@ -144,20 +163,26 @@ async def list_documents() -> dict[str, Any]:
         from app.db import SessionLocal
 
         with SessionLocal() as db:
-            docs = document_service.list_documents(account_id, db)
-        return [
-            {
-                "document_id": d.document_id,
-                "filename": d.filename,
-                "status": d.status,
-                "created_at": d.created_at,
-                "chunk_count": d.chunk_count,
-            }
-            for d in docs
-        ]
+            return document_service.list_documents_raw(account_id, db)
 
     documents = await asyncio.to_thread(_run)
     return {"documents": documents}
+
+
+@mcp.tool()
+async def list_collections() -> dict[str, Any]:
+    """List all collections in your knowledge base with document counts."""
+    account_id = get_account_id()
+
+    def _run() -> list[dict[str, Any]]:
+        from app.db import SessionLocal
+
+        with SessionLocal() as db:
+            items = document_service.list_collections(account_id, db)
+        return [{"name": item.name, "document_count": item.document_count} for item in items]
+
+    collections = await asyncio.to_thread(_run)
+    return {"collections": collections}
 
 
 @mcp.tool()
@@ -199,6 +224,25 @@ async def delete_document(document_id: str) -> dict[str, Any]:
 
     await asyncio.to_thread(_run)
     return {"deleted": document_id}
+
+
+@mcp.tool()
+async def reindex_document(document_id: str) -> dict[str, Any]:
+    """Re-embed all chunks for a document using the current embedding model.
+
+    Use this after changing EMBED_MODEL to refresh stale embeddings.
+    Returns chunk_count when complete.
+    """
+    account_id = get_account_id()
+
+    def _run() -> int:
+        from app.db import SessionLocal
+
+        with SessionLocal() as db:
+            return document_service.reindex_document(document_id, account_id, db)
+
+    chunk_count = await asyncio.to_thread(_run)
+    return {"document_id": document_id, "chunk_count": chunk_count}
 
 
 # ---------------------------------------------------------------------------

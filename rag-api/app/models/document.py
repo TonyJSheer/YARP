@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import Text, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.base import Base
@@ -18,4 +20,8 @@ class Document(Base):
     storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(default="uploaded")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    collection: Mapped[str] = mapped_column(Text, nullable=False, default="default")
+    doc_metadata: Mapped[dict[str, Any] | None] = mapped_column(
+        "doc_metadata", JSONB, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
