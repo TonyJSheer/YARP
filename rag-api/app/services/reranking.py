@@ -15,7 +15,7 @@ from app.config import settings
 
 
 @functools.lru_cache(maxsize=1)
-def _get_model() -> CrossEncoder:  # type: ignore[type-arg]
+def _get_model() -> Any:
     """Load and cache the CrossEncoder model (loaded once per process)."""
     return CrossEncoder(settings.rerank_model)
 
@@ -36,7 +36,7 @@ def rerank(question: str, chunks: list[Any], top_k: int) -> list[Any]:
 
     model = _get_model()
     pairs = [(question, c.text) for c in chunks]
-    scores = model.predict(pairs)  # type: ignore[no-untyped-call]
+    scores = model.predict(pairs)
 
     # Cast numpy floats to Python float for JSON serialisability, then sort.
     scored = sorted(

@@ -14,9 +14,8 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models.chunk import Chunk
 from app.models.document import Document
-from app.services.retrieval import MAX_TOP_K, RetrievedChunk, _bm25_search, retrieve
 from app.services.reranking import rerank
-
+from app.services.retrieval import MAX_TOP_K, RetrievedChunk, _bm25_search, retrieve
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -415,3 +414,58 @@ def test_account_isolation_preserved_in_hybrid(db_session: Session) -> None:
             synchronize_session=False
         )
         db_session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Reranking unit tests (P3-05)
+# ---------------------------------------------------------------------------
+
+
+def test_rerank_reorders_chunks() -> None:
+    """Cross-encoder scores override retrieval order."""
+    chunk_a = _make_chunk("The answer is 42", score=0.3)
+    chunk_b = _make_chunk("Irrelevant content here", score=0.8)
+
+    mock_model = MagicMock()
+    # chunk_a gets 0.9, chunk_b gets 0.2 — opposite of retrieval order
+    mock_model.predict.return_value = [0.9, 0.2]
+
+    with patch("app.services.reranking._get_model", return_value=mock_model):
+        result = rerank("What is the answer?", [chunk_a, chunk_b], top_k=2)
+
+    assert result[0] is chunk_a, "chunk_a (cross-encoder score 0.9) must be first"
+    assert result[1] is chunk_b, "chunk_b (cross-encoder score 0.2) must be second"
+
+
+def test_rerank_false_skips_cross_encoder() -> None:
+    """When rerank=False, the cross-encoder model must never be instantiated."""
+    mock_db = MagicMock()
+    mock_db.execute.return_value.fetchall.return_value = []
+
+    with patch("app.services.reranking._get_model") as mock_get_model:
+        retrieve(
+            query_embedding=[1.0] + [0.0] * 767,
+            account_id="test",
+            db=mock_db,
+            top_k=5,
+            search_mode="vector",
+            query_text="test question",
+            rerank=False,
+        )
+        mock_get_model.assert_not_called()
+
+
+def test_rerank_truncates_to_top_k() -> None:
+    """rerank() returns exactly top_k results even when given more candidates."""
+    chunks = [_make_chunk(f"chunk {i}") for i in range(5)]
+
+    mock_model = MagicMock()
+    mock_model.predict.return_value = [0.5, 0.3, 0.9, 0.1, 0.7]
+
+    with patch("app.services.reranking._get_model", return_value=mock_model):
+        result = rerank("question", chunks, top_k=2)
+
+    assert len(result) == 2
+    # chunk index 2 (score 0.9) and chunk index 4 (score 0.7) are the top 2
+    assert result[0] is chunks[2]
+    assert result[1] is chunks[4]

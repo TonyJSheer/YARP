@@ -149,3 +149,21 @@ def test_query_stream_done_event_is_last(client: TestClient, auth_headers: dict[
         response = client.post("/query/stream", json={"question": "Hi?"}, headers=auth_headers)
 
     assert response.text.endswith("data: [DONE]\n\n")
+
+
+def test_rest_query_with_rerank(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """POST /query accepts rerank=true and returns 200."""
+    chunk = make_chunk()
+    with (
+        patch("app.services.embedding.embed_query", return_value=FAKE_VECTOR),
+        patch("app.services.retrieval.retrieve", return_value=[chunk]),
+        patch("app.services.generation.generate_answer", return_value=("Answer.", [chunk])),
+    ):
+        response = client.post(
+            "/query",
+            json={"question": "Capital of France?", "rerank": True},
+            headers=auth_headers,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "Answer."
