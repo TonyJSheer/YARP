@@ -102,6 +102,72 @@ def ingest(file: UploadFile, account_id: str, db: Session) -> uuid.UUID:
     return doc.id
 
 
+def ingest_from_bytes(
+    filename: str,
+    data: bytes,
+    account_id: str,
+    db: Session,
+) -> tuple[uuid.UUID, int]:
+    """Ingest raw bytes through the full pipeline.
+
+    Same as ingest() but accepts bytes directly instead of UploadFile.
+    Returns (doc_id, chunk_count).
+    """
+    ext = Path(filename).suffix.lower()
+    if ext not in SUPPORTED_EXTENSIONS:
+        raise UnsupportedFileTypeError(ext)
+
+    hasher = hashlib.sha256()
+    hasher.update(data)
+    sha256_hex = hasher.hexdigest()
+
+    storage = get_storage_service()
+    storage_key = storage.save(account_id, Path(filename).name, data)
+
+    doc = Document(
+        account_id=account_id,
+        filename=Path(filename).name,
+        content_type="application/octet-stream",
+        sha256=sha256_hex,
+        storage_key=storage_key,
+        status="processing",
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    try:
+        file_path = storage.get_url(storage_key)
+        texts, page_numbers = chunking.extract_text(file_path)
+        chunk_models: list[Chunk] = []
+        for page_text, page_num in zip(texts, page_numbers):
+            for chunk_str in chunking.chunk_text(page_text):
+                chunk_models.append(
+                    Chunk(
+                        document_id=doc.id,
+                        chunk_index=len(chunk_models),
+                        page_number=page_num,
+                        text=chunk_str,
+                        embedding=None,
+                    )
+                )
+        db.add_all(chunk_models)
+        db.flush()
+
+        vectors = embedding.embed_chunks([c.text for c in chunk_models])
+        for chunk, vector in zip(chunk_models, vectors):
+            chunk.embedding = vector
+
+        doc.status = "ready"
+        db.commit()
+    except Exception:
+        doc.status = "failed"
+        db.commit()
+        raise
+
+    return doc.id, len(chunk_models)
+
+
 def _save_file(file: UploadFile, account_id: str) -> tuple[str, str]:
     """Save uploaded file via the storage service. Returns (storage_key, sha256)."""
     hasher = hashlib.sha256()

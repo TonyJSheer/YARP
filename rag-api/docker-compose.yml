@@ -31,6 +31,23 @@ services:
       timeout: 5s
       retries: 5
 
+  mcp:
+    build: .
+    command: uv run rag-mcp --transport http --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://rag:rag@postgres:5432/rag
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - UPLOAD_DIR=/data/uploads
+      - JWT_SECRET=${JWT_SECRET}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:
   uploads:

@@ -1,12 +1,23 @@
-from fastapi import APIRouter, Depends, UploadFile
+import msgspec
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
-from app.services import ingestion
+from app.services import document_service, ingestion
 from app.services.auth import get_current_account_id
+from app.services.storage import get_storage_service
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+@router.get("", response_model=None)
+async def list_documents(
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+) -> dict[str, list[dict[str, object]]]:
+    items = document_service.list_documents(account_id, db)
+    return {"documents": [msgspec.to_builtins(item) for item in items]}
 
 
 @router.post("", status_code=201, response_model=None)
@@ -46,3 +57,25 @@ async def upload_document(
             },
         )
     return {"document_id": str(doc_id), "status": "ready"}
+
+
+@router.delete("/{document_id}", status_code=204, response_model=None)
+async def delete_document(
+    document_id: str,
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+) -> None:
+    storage = get_storage_service()
+    try:
+        document_service.delete_document(document_id, account_id, db, storage)
+    except document_service.DocumentNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": {
+                    "code": "not_found",
+                    "message": "Document not found",
+                    "field": None,
+                }
+            },
+        )

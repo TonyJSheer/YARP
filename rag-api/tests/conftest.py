@@ -1,4 +1,6 @@
 import os
+from collections.abc import Generator
+from typing import Any
 
 import jwt
 import pytest
@@ -23,6 +25,8 @@ def client() -> TestClient:
 
 TEST_JWT_SECRET = "test-secret"
 TEST_JWT_ALGORITHM = "HS256"
+TEST_ACCOUNT_A = "acct_test_a"
+TEST_ACCOUNT_B = "acct_test_b"
 
 
 @pytest.fixture(autouse=True)
@@ -41,3 +45,56 @@ def auth_token() -> str:
 @pytest.fixture
 def auth_headers(auth_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {auth_token}"}
+
+
+@pytest.fixture
+def token_a() -> str:
+    return jwt.encode({"sub": TEST_ACCOUNT_A}, TEST_JWT_SECRET, algorithm=TEST_JWT_ALGORITHM)
+
+
+@pytest.fixture
+def token_b() -> str:
+    return jwt.encode({"sub": TEST_ACCOUNT_B}, TEST_JWT_SECRET, algorithm=TEST_JWT_ALGORITHM)
+
+
+@pytest.fixture
+def auth_headers_a(token_a: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token_a}"}
+
+
+@pytest.fixture
+def auth_headers_b(token_b: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token_b}"}
+
+
+@pytest.fixture
+def mock_s3() -> Generator[Any, None, None]:
+    """Mocked S3 environment using moto. Yields a boto3 S3 client."""
+    from unittest.mock import patch
+
+    from moto import mock_aws
+
+    with patch.dict(
+        os.environ,
+        {
+            "AWS_ACCESS_KEY_ID": "testing",
+            "AWS_SECRET_ACCESS_KEY": "testing",
+            "AWS_DEFAULT_REGION": "us-east-1",
+        },
+    ):
+        with mock_aws():
+            import boto3
+
+            client = boto3.client("s3", region_name="us-east-1")
+            client.create_bucket(Bucket="test-rag-bucket")
+            yield client
+
+
+@pytest.fixture
+def s3_storage_settings(monkeypatch: pytest.MonkeyPatch, mock_s3: Any) -> None:
+    """Override config to use S3 backend with moto."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "storage_backend", "s3")
+    monkeypatch.setattr(settings, "s3_bucket", "test-rag-bucket")
+    monkeypatch.setattr(settings, "s3_region", "us-east-1")
