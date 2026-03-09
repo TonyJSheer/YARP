@@ -1,4 +1,5 @@
 """Embedding service — generates vector embeddings via sentence-transformers."""
+
 from app.providers import ai_client
 
 

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.services import ingestion
+from app.services.auth import get_current_account_id
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -12,6 +13,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 async def upload_document(
     file: UploadFile,
     db: Session = Depends(get_db),
+    account_id: str = Depends(get_current_account_id),
 ) -> dict[str, str] | JSONResponse:
     """Upload a document for ingestion.
 
@@ -20,7 +22,7 @@ async def upload_document(
     with status='chunked'.
     """
     try:
-        doc_id = ingestion.ingest(file, db)
+        doc_id = ingestion.ingest(file, account_id, db)
     except ingestion.UnsupportedFileTypeError:
         return JSONResponse(
             status_code=400,

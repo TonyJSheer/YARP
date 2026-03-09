@@ -1,4 +1,5 @@
 """Tests for the chunking service (extract_text and chunk_text)."""
+
 from pathlib import Path
 
 import pytest
@@ -45,7 +46,7 @@ def test_chunk_text_produces_overlap() -> None:
 
     # The end of the first chunk should appear at the start of the second chunk.
     first_tail = chunks[0][-OVERLAP_CHARS:]
-    second_head = chunks[1][:OVERLAP_CHARS + 20]
+    second_head = chunks[1][: OVERLAP_CHARS + 20]
     # At least some words from the tail of chunk[0] appear in the head of chunk[1].
     tail_words = set(first_tail.split())
     head_words = set(second_head.split())

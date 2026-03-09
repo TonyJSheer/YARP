@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-haiku-4-5-20251001"
     embed_model: str = "all-mpnet-base-v2"
     upload_dir: str = "./data/uploads"
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    storage_backend: str = "local"
+    s3_bucket: str = ""
+    s3_region: str = "us-east-1"
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
 
 
 @lru_cache

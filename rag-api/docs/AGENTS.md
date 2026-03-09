@@ -105,8 +105,8 @@ uv run pytest -k "test_query"
 # Run with output (no capture)
 uv run pytest -s tests/test_health.py
 
-# Database migrations
-uv run alembic upgrade head
+# Database migrations (PYTHONPATH=. required — use make migrate, not bare alembic)
+make migrate
 uv run alembic revision --autogenerate -m "description"
 
 # Start postgres only (for running API outside Docker)

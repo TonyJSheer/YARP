@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_db
 from app.schemas.query import Citation, QueryRequest, QueryResponse
 from app.services import embedding, generation, retrieval
+from app.services.auth import get_current_account_id
 
 router = APIRouter(prefix="/query", tags=["query"])
 
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/query", tags=["query"])
 async def query_endpoint(
     request: Request,
     db: Session = Depends(get_db),
+    account_id: str = Depends(get_current_account_id),
 ) -> Response:
     """RAG query — retrieve relevant chunks and generate a grounded answer.
 
@@ -31,7 +33,7 @@ async def query_endpoint(
         )
 
     query_vec = embedding.embed_query(req.question)
-    chunks = retrieval.retrieve(query_vec, db, top_k=req.top_k)
+    chunks = retrieval.retrieve(query_vec, account_id, db, top_k=req.top_k)
     answer, cited_chunks = generation.generate_answer(req.question, chunks)
 
     citations = [
@@ -55,6 +57,7 @@ async def query_endpoint(
 async def query_stream(
     request: Request,
     db: Session = Depends(get_db),
+    account_id: str = Depends(get_current_account_id),
 ) -> StreamingResponse:
     """RAG query with SSE token streaming.
 
@@ -64,7 +67,7 @@ async def query_stream(
     req = msgspec.json.decode(await request.body(), type=QueryRequest)
 
     query_vec = embedding.embed_query(req.question)
-    chunks = retrieval.retrieve(query_vec, db, top_k=req.top_k)
+    chunks = retrieval.retrieve(query_vec, account_id, db, top_k=req.top_k)
 
     def event_generator() -> Iterator[str]:
         for token in generation.generate_answer_stream(req.question, chunks):

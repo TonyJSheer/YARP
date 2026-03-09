@@ -1,8 +1,9 @@
 """AI provider — sentence-transformers for embeddings, Anthropic for generation."""
+
 from collections.abc import Iterator
 
 import anthropic
-from sentence_transformers import SentenceTransformer  # type: ignore[import-untyped]
+from sentence_transformers import SentenceTransformer
 
 from app.config import settings
 

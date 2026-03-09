@@ -24,13 +24,17 @@ def mock_embed_chunks() -> pytest.FixtureRequest:
 
 
 def test_upload_txt_returns_201(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
 
     response = client.post(
         "/documents",
         files={"file": ("hello.txt", b"Hello, world! This is a test document.", "text/plain")},
+        headers=auth_headers,
     )
 
     assert response.status_code == 201
@@ -40,7 +44,10 @@ def test_upload_txt_returns_201(
 
 
 def test_upload_saves_file_to_disk(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
     content = b"File content to verify on disk"
@@ -48,21 +55,28 @@ def test_upload_saves_file_to_disk(
     client.post(
         "/documents",
         files={"file": ("disk_test.txt", content, "text/plain")},
+        headers=auth_headers,
     )
 
-    saved_files = list(tmp_path.iterdir())
+    # Files are now scoped by account_id — find the saved file recursively
+    saved_files = list(tmp_path.rglob("*"))
+    saved_files = [f for f in saved_files if f.is_file()]
     assert len(saved_files) == 1
     assert saved_files[0].read_bytes() == content
 
 
 def test_upload_creates_db_record(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
 
     response = client.post(
         "/documents",
         files={"file": ("record_test.txt", b"DB record content", "text/plain")},
+        headers=auth_headers,
     )
     doc_id = uuid.UUID(response.json()["document_id"])
 
@@ -72,16 +86,21 @@ def test_upload_creates_db_record(
         assert doc.filename == "record_test.txt"
         assert doc.status == "ready"
         assert len(doc.sha256) == 64  # sha256 hex is always 64 chars
+        assert doc.account_id == "test-account"
 
 
 def test_upload_unsupported_type_returns_400(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
 
     response = client.post(
         "/documents",
         files={"file": ("payload.exe", b"not a document", "application/octet-stream")},
+        headers=auth_headers,
     )
 
     assert response.status_code == 400
@@ -91,7 +110,10 @@ def test_upload_unsupported_type_returns_400(
 
 
 def test_upload_creates_chunk_rows(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
     content = b"This is a sentence. And another sentence here. One more for good measure."
@@ -99,6 +121,7 @@ def test_upload_creates_chunk_rows(
     response = client.post(
         "/documents",
         files={"file": ("chunks_test.txt", content, "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 201
     doc_id = uuid.UUID(response.json()["document_id"])
@@ -110,13 +133,17 @@ def test_upload_creates_chunk_rows(
 
 
 def test_upload_chunks_have_embeddings(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
 
     response = client.post(
         "/documents",
         files={"file": ("embed_test.txt", b"Embedding test sentence.", "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 201
     doc_id = uuid.UUID(response.json()["document_id"])
@@ -128,13 +155,17 @@ def test_upload_chunks_have_embeddings(
 
 
 def test_upload_md_file_accepted(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
 
     response = client.post(
         "/documents",
         files={"file": ("notes.md", b"# Heading\n\nSome markdown content.", "text/markdown")},
+        headers=auth_headers,
     )
 
     assert response.status_code == 201
@@ -142,7 +173,10 @@ def test_upload_md_file_accepted(
 
 
 def test_upload_pdf_file_accepted(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
 
@@ -174,6 +208,7 @@ startxref
     response = client.post(
         "/documents",
         files={"file": ("doc.pdf", minimal_pdf, "application/pdf")},
+        headers=auth_headers,
     )
 
     assert response.status_code == 201

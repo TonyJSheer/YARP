@@ -1,5 +1,8 @@
 # Development Guide
 
+> **All commands in this guide are run from the `rag-api/` directory**, not the repo root.
+> If you cloned YARP, `cd rag-api` first.
+
 ## Prerequisites
 
 - Docker + Docker Compose
@@ -9,7 +12,7 @@
 ## Local Setup
 
 ```bash
-# 1. Copy env file and add your OpenAI API key
+# 1. Copy env file and fill in required values
 cp .env.example .env
 
 # 2. Install Python dependencies
@@ -53,8 +56,9 @@ make test
 ### Add a migration
 
 ```bash
+# Always use make migrate (sets PYTHONPATH=. for alembic to find app/)
 uv run alembic revision --autogenerate -m "add_column_to_table"
-uv run alembic upgrade head
+make migrate
 ```
 
 ### Check lint and types
@@ -79,10 +83,17 @@ See `.env.example` for all variables.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DATABASE_URL` | yes | — | PostgreSQL connection string |
-| `OPENAI_API_KEY` | yes | — | OpenAI API key |
-| `OPENAI_EMBED_MODEL` | no | `text-embedding-ada-002` | Embedding model |
-| `OPENAI_CHAT_MODEL` | no | `gpt-4o` | Chat completion model |
+| `ANTHROPIC_API_KEY` | yes | — | Anthropic API key |
+| `ANTHROPIC_MODEL` | no | `claude-haiku-4-5-20251001` | Chat model |
+| `EMBED_MODEL` | no | `all-mpnet-base-v2` | Embedding model |
 | `UPLOAD_DIR` | no | `./data/uploads` | Local file upload directory |
+| `JWT_SECRET` | yes | — | Secret for signing JWT bearer tokens |
+| `JWT_ALGORITHM` | no | `HS256` | JWT signing algorithm |
+| `STORAGE_BACKEND` | no | `local` | `local` or `s3` |
+| `S3_BUCKET` | no (s3 only) | — | S3 bucket name |
+| `S3_REGION` | no | `us-east-1` | AWS region |
+| `AWS_ACCESS_KEY_ID` | no (s3 only) | — | AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | no (s3 only) | — | AWS secret key |
 
 ## Project Structure
 

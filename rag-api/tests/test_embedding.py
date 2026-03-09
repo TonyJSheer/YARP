@@ -1,4 +1,5 @@
 """Tests for the embedding service."""
+
 from unittest.mock import patch
 
 from app.services.embedding import embed_chunks, embed_query

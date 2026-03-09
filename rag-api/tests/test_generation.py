@@ -1,4 +1,5 @@
 """Tests for the generation service."""
+
 import uuid
 from unittest.mock import patch
 
@@ -69,9 +70,7 @@ def test_generate_answer_returns_answer_and_chunks() -> None:
 
 
 def test_generate_answer_no_chunks_still_calls_llm() -> None:
-    with patch(
-        "app.providers.ai_client.chat_completion", return_value="I don't know."
-    ) as mock_cc:
+    with patch("app.providers.ai_client.chat_completion", return_value="I don't know.") as mock_cc:
         answer, cited = generation.generate_answer("Question?", [])
 
     mock_cc.assert_called_once()

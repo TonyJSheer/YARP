@@ -2,6 +2,7 @@
 
 Uses pgvector cosine similarity search.
 """
+
 import uuid
 from dataclasses import dataclass
 
@@ -23,12 +24,15 @@ class RetrievedChunk:
 
 def retrieve(
     query_embedding: list[float],
+    account_id: str,
     db: Session,
     top_k: int = 5,
 ) -> list[RetrievedChunk]:
-    """Find the top-K most similar chunks to a query embedding.
+    """Find the top-K most similar chunks to a query embedding, scoped to account_id.
 
     Uses pgvector cosine distance (<=> operator).
+    Chunks are filtered via JOIN through documents.account_id — cross-tenant
+    data is never returned.
     Returns chunks ordered by similarity (most similar first).
     top_k is capped at MAX_TOP_K.
     """
@@ -38,15 +42,17 @@ def retrieve(
     rows = db.execute(
         text(
             """
-            SELECT id, document_id, chunk_index, page_number, text,
-                   1 - (embedding <=> CAST(:vec AS vector)) AS score
-            FROM chunks
-            WHERE embedding IS NOT NULL
-            ORDER BY embedding <=> CAST(:vec AS vector)
+            SELECT c.id, c.document_id, c.chunk_index, c.page_number, c.text,
+                   1 - (c.embedding <=> CAST(:vec AS vector)) AS score
+            FROM chunks c
+            JOIN documents d ON c.document_id = d.id
+            WHERE c.embedding IS NOT NULL
+              AND d.account_id = :account_id
+            ORDER BY c.embedding <=> CAST(:vec AS vector)
             LIMIT :k
             """
         ),
-        {"vec": vector_str, "k": top_k},
+        {"vec": vector_str, "k": top_k, "account_id": account_id},
     ).fetchall()
 
     return [

@@ -5,6 +5,7 @@ System prompt rules:
 2. Cite sources (document_id + page) for each claim.
 3. Say "I don't know" if the answer is not found in context.
 """
+
 from collections.abc import Iterator
 
 from app.providers import ai_client

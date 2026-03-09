@@ -2,6 +2,7 @@
 
 Pipeline: save file → extract text → chunk → embed → store chunks
 """
+
 import hashlib
 import uuid
 from pathlib import Path
@@ -9,10 +10,10 @@ from pathlib import Path
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models.chunk import Chunk
 from app.models.document import Document
 from app.services import chunking, embedding
+from app.services.storage import get_storage_service
 
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf"}
 
@@ -21,37 +22,39 @@ class UnsupportedFileTypeError(Exception):
     """Raised when an uploaded file has an unsupported extension."""
 
 
-def save_and_record(file: UploadFile, db: Session) -> tuple[Document, Path]:
-    """Save an uploaded file to disk and create a documents DB record.
+def save_and_record(file: UploadFile, account_id: str, db: Session) -> tuple[Document, str]:
+    """Save an uploaded file via the storage service and create a documents DB record.
 
-    Validates the file extension, saves the file to UPLOAD_DIR,
+    Validates the file extension, saves the file via the configured storage backend,
     computes sha256, and inserts a Document row with status='uploaded'.
 
-    Returns (document, saved_path).
+    Returns (document, storage_key).
     Raises UnsupportedFileTypeError for non-txt/md/pdf files.
     """
     ext = Path(file.filename or "").suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
         raise UnsupportedFileTypeError(ext)
 
-    path, sha256 = _save_file(file)
+    storage_key, sha256 = _save_file(file, account_id)
 
     doc = Document(
-        filename=Path(file.filename or path.name).name,
+        account_id=account_id,
+        filename=Path(file.filename or "upload").name,
         content_type=file.content_type or "application/octet-stream",
         sha256=sha256,
+        storage_key=storage_key,
         status="uploaded",
     )
     db.add(doc)
     db.commit()
     db.refresh(doc)
-    return doc, path
+    return doc, storage_key
 
 
-def ingest(file: UploadFile, db: Session) -> uuid.UUID:
+def ingest(file: UploadFile, account_id: str, db: Session) -> uuid.UUID:
     """Ingest an uploaded file through the full pipeline.
 
-    1. Save file to UPLOAD_DIR and create document record
+    1. Save file via storage service and create document record (scoped to account_id)
     2. Set doc.status = 'processing', commit
     3. Extract text from the saved file
     4. Chunk each page's text
@@ -60,13 +63,16 @@ def ingest(file: UploadFile, db: Session) -> uuid.UUID:
     7. Write vectors to Chunk rows, set doc.status = 'ready', commit
     8. Return doc.id
     """
-    doc, saved_path = save_and_record(file, db)
+    doc, storage_key = save_and_record(file, account_id, db)
 
     doc.status = "processing"
     db.commit()
 
+    storage = get_storage_service()
+
     try:
-        texts, page_numbers = chunking.extract_text(str(saved_path))
+        file_path = storage.get_url(storage_key)
+        texts, page_numbers = chunking.extract_text(file_path)
         chunk_models: list[Chunk] = []
         for page_text, page_num in zip(texts, page_numbers):
             for chunk_str in chunking.chunk_text(page_text):
@@ -96,17 +102,16 @@ def ingest(file: UploadFile, db: Session) -> uuid.UUID:
     return doc.id
 
 
-def _save_file(file: UploadFile) -> tuple[Path, str]:
-    """Save uploaded file to disk. Returns (path, sha256)."""
-    upload_dir = Path(settings.upload_dir)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    dest = upload_dir / f"{uuid.uuid4()}_{Path(file.filename or 'upload').name}"
+def _save_file(file: UploadFile, account_id: str) -> tuple[str, str]:
+    """Save uploaded file via the storage service. Returns (storage_key, sha256)."""
     hasher = hashlib.sha256()
+    chunks: list[bytes] = []
 
-    with dest.open("wb") as f:
-        while chunk := file.file.read(65536):
-            hasher.update(chunk)
-            f.write(chunk)
+    while raw := file.file.read(65536):
+        hasher.update(raw)
+        chunks.append(raw)
 
-    return dest, hasher.hexdigest()
+    data = b"".join(chunks)
+    storage = get_storage_service()
+    storage_key = storage.save(account_id, Path(file.filename or "upload").name, data)
+    return storage_key, hasher.hexdigest()
