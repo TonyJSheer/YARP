@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     storage_backend: str = "local"
     s3_bucket: str = ""
     s3_region: str = "us-east-1"
+    s3_endpoint_url: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
 

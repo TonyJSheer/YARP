@@ -20,6 +20,7 @@ class RetrievedChunk:
     page_number: int | None
     text: str
     score: float
+    filename: str
 
 
 def retrieve(
@@ -43,7 +44,8 @@ def retrieve(
         text(
             """
             SELECT c.id, c.document_id, c.chunk_index, c.page_number, c.text,
-                   1 - (c.embedding <=> CAST(:vec AS vector)) AS score
+                   1 - (c.embedding <=> CAST(:vec AS vector)) AS score,
+                   d.filename
             FROM chunks c
             JOIN documents d ON c.document_id = d.id
             WHERE c.embedding IS NOT NULL
@@ -63,6 +65,7 @@ def retrieve(
             page_number=row.page_number,
             text=row.text,
             score=float(row.score),
+            filename=row.filename,
         )
         for row in rows
     ]

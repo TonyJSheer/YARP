@@ -13,7 +13,7 @@ Everything below has already been done — no setup needed before testing:
 |---|---|
 | PostgreSQL running | ✅ `rag-api-postgres-1` healthy on port 5432 |
 | Migrations | ✅ at head (0004) |
-| `.env` configured | ✅ includes `JWT_SECRET`, `ANTHROPIC_API_KEY`, `STORAGE_BACKEND=local` |
+| `.env` configured | ✅ includes `JWT_SECRET`, `STORAGE_BACKEND=local` (ANTHROPIC_API_KEY not required for MCP) |
 | `~/.claude/settings.json` | ✅ `rag-api` MCP server configured for stdio |
 | Token generated | ✅ account_id = `tonymac` |
 | MCP binary | ✅ `uv run rag-mcp` starts cleanly |
@@ -106,22 +106,27 @@ The agent will base64-encode the content and call `upload_document`.
 **Prompt to agent:**
 > Using the rag-api MCP tools, ask: "When was the Eiffel Tower built and how tall is it?"
 
-**Expected result:** Answer should mention 1889 and 330 metres, with a citation pointing to `test-doc.txt`.
+**Expected result:** Chunks containing Eiffel Tower facts returned — Claude will synthesise the answer from the chunks.
 
 ```json
 {
-  "answer": "The Eiffel Tower was built in 1889 and stands 330 metres tall.",
-  "citations": [
+  "question": "When was the Eiffel Tower built and how tall is it?",
+  "chunks": [
     {
+      "text": "The capital of France is Paris. The Eiffel Tower was built in 1889...",
       "document_id": "<uuid>",
+      "filename": "test-doc.txt",
+      "page_number": 1,
       "chunk_index": 0,
-      "text": "...Eiffel Tower was built in 1889..."
+      "score": 0.9
     }
-  ]
+  ],
+  "chunk_count": 1,
+  "hint": "Use the chunks above as context to answer the question. Cite sources by filename and page_number."
 }
 ```
 
-**What it verifies:** Embedding of query, pgvector similarity search, Anthropic Claude generation, citation extraction.
+**What it verifies:** Embedding of query, pgvector similarity search, chunk retrieval with filename. Claude synthesises the answer from the returned chunks — no server-side LLM call required.
 
 ---
 
@@ -151,9 +156,21 @@ The agent will base64-encode the content and call `upload_document`.
 **Prompt to agent:**
 > Using the rag-api MCP tools, ask: "Which city hosted the Olympics and when was the Eiffel Tower built?"
 
-**Expected result:** Answer covers both facts; citations include chunks from both documents.
+**Expected result:** Chunks from both documents returned — Claude synthesises an answer covering both facts.
 
-**What it verifies:** Multi-document retrieval works correctly.
+```json
+{
+  "question": "Which city hosted the Olympics and when was the Eiffel Tower built?",
+  "chunks": [
+    {"filename": "cities.txt", "text": "...hosted the Summer Olympics...", "score": 0.9, "...": "..."},
+    {"filename": "test-doc.txt", "text": "...Eiffel Tower was built in 1889...", "score": 0.85, "...": "..."}
+  ],
+  "chunk_count": 2,
+  "hint": "Use the chunks above as context to answer the question. Cite sources by filename and page_number."
+}
+```
+
+**What it verifies:** Multi-document retrieval works correctly; both filenames appear in chunk results.
 
 ---
 
@@ -187,7 +204,7 @@ The agent will base64-encode the content and call `upload_document`.
 | `MCP_AUTH_TOKEN not set` | Env var missing from `~/.claude/settings.json` |
 | `relation "documents" does not exist` | Migrations not applied — run `make migrate` |
 | Upload hangs for 2–5 minutes | sentence-transformers model is downloading — wait it out |
-| `ANTHROPIC_API_KEY` error | Key in `.env` / settings.json is invalid or rotated |
+| `ANTHROPIC_API_KEY` error | Only affects REST `/query` endpoint — not MCP tools |
 | `cannot connect to postgres` | Run `docker compose up postgres -d` from `rag-api/` |
 
 ---

@@ -16,6 +16,7 @@ def make_chunk(**kwargs: object) -> RetrievedChunk:
         page_number=1,
         text="test text",
         score=0.9,
+        filename="test.txt",
     )
     return RetrievedChunk(**{**defaults, **kwargs})  # type: ignore[arg-type]
 

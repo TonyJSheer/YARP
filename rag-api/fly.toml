@@ -1,0 +1,40 @@
+app = "rag-api"
+primary_region = "syd"
+
+[build]
+
+# Two process groups:
+#   api — REST API on port 8000, publicly accessible via HTTPS on fly.dev
+#   mcp — MCP HTTP server on port 8001, internal only (see NOTE below)
+#
+# NOTE on MCP external access:
+#   Fly.io routes external HTTPS traffic by hostname, not port. A second HTTPS port
+#   on the same app cannot be exposed without a separate Fly app or complex TCP routing.
+#   Port 8001 is therefore INTERNAL ONLY.
+#
+#   To connect an MCP client to the cloud deployment, use fly proxy to open a
+#   WireGuard tunnel to port 8001:
+#
+#     fly proxy 8001
+#
+#   Then configure your MCP client with:
+#     url: http://localhost:8001/mcp
+#     headers: { Authorization: "Bearer <token>" }
+#
+#   Do NOT add secrets here. Set them via: fly secrets set KEY=value ...
+[processes]
+  api = "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  mcp = "uv run rag-mcp --transport http --host 0.0.0.0 --port 8001"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["api"]
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

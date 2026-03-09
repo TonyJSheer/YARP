@@ -18,6 +18,7 @@ def make_chunk(**kwargs: object) -> RetrievedChunk:
         page_number=1,
         text="Paris is the capital of France.",
         score=0.95,
+        filename="test.txt",
     )
     return RetrievedChunk(**{**defaults, **kwargs})  # type: ignore[arg-type]
 

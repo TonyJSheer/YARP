@@ -36,6 +36,7 @@ def make_chunk(**kwargs: object) -> RetrievedChunk:
         page_number=1,
         text="The quick brown fox.",
         score=0.95,
+        filename="test.txt",
     )
     return RetrievedChunk(**{**defaults, **kwargs})  # type: ignore[arg-type]
 
@@ -103,13 +104,10 @@ async def test_upload_document_tool(
 
 
 @pytest.mark.asyncio
-async def test_query_documents_tool(
-    tmp_path: Path,
+async def test_query_documents_returns_chunks(
     monkeypatch: pytest.MonkeyPatch,
-    account_id: str,
     mcp_token: str,
 ) -> None:
-    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
     monkeypatch.setenv("MCP_AUTH_TOKEN", mcp_token)
 
     chunk = make_chunk(document_id=uuid.uuid4())
@@ -117,18 +115,55 @@ async def test_query_documents_tool(
     with (
         patch("app.services.embedding.embed_query", return_value=FAKE_VECTOR),
         patch("app.services.retrieval.retrieve", return_value=[chunk]),
-        patch(
-            "app.services.generation.generate_answer",
-            return_value=("The fox jumps.", [chunk]),
-        ),
     ):
         result = await query_documents(question="What does the fox do?", top_k=3)
 
-    assert "answer" in result
-    assert result["answer"] == "The fox jumps."
-    assert "citations" in result
-    assert len(result["citations"]) == 1
-    assert "document_id" in result["citations"][0]
+    assert "answer" not in result
+    assert result["question"] == "What does the fox do?"
+    assert "chunks" in result
+    assert isinstance(result["chunks"], list)
+    assert result["chunk_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_query_documents_chunk_has_required_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_token: str,
+) -> None:
+    monkeypatch.setenv("MCP_AUTH_TOKEN", mcp_token)
+
+    chunk = make_chunk()
+
+    with (
+        patch("app.services.embedding.embed_query", return_value=FAKE_VECTOR),
+        patch("app.services.retrieval.retrieve", return_value=[chunk]),
+    ):
+        result = await query_documents(question="test?")
+
+    assert len(result["chunks"]) == 1
+    c = result["chunks"][0]
+    for field in ("text", "document_id", "filename", "page_number", "chunk_index", "score"):
+        assert field in c
+
+
+@pytest.mark.asyncio
+async def test_query_documents_no_anthropic_key_needed(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_token: str,
+) -> None:
+    monkeypatch.setenv("MCP_AUTH_TOKEN", mcp_token)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+
+    chunk = make_chunk()
+
+    with (
+        patch("app.services.embedding.embed_query", return_value=FAKE_VECTOR),
+        patch("app.services.retrieval.retrieve", return_value=[chunk]),
+    ):
+        result = await query_documents(question="test?")
+
+    assert "chunks" in result
+    assert "answer" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -236,12 +271,8 @@ async def test_cross_tenant_isolation(
     with (
         patch("app.services.embedding.embed_query", return_value=FAKE_VECTOR),
         patch("app.services.retrieval.retrieve", return_value=[]),
-        patch(
-            "app.services.generation.generate_answer",
-            return_value=("I don't know based on the provided documents.", []),
-        ),
     ):
         result = await query_documents(question="What is the secret?")
 
-    assert result["citations"] == []
-    assert "don't know" in result["answer"]
+    assert result["chunks"] == []
+    assert result["chunk_count"] == 0

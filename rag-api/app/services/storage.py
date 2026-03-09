@@ -32,11 +32,15 @@ class LocalStorageService:
 
 
 class S3StorageService:
-    def __init__(self, bucket: str, region: str) -> None:
+    def __init__(self, bucket: str, region: str, endpoint_url: str = "") -> None:
         import boto3  # type: ignore[import-untyped]  # lazy import — not needed for local backend
 
         self.bucket = bucket
-        self.client = boto3.client("s3", region_name=region)
+        self.client = boto3.client(
+            "s3",
+            region_name=region,
+            endpoint_url=endpoint_url or None,  # None uses default AWS endpoint; set for Fly Tigris
+        )
 
     def save(self, account_id: str, filename: str, data: bytes) -> str:
         key = f"{account_id}/{uuid.uuid4()}_{filename}"
@@ -58,5 +62,5 @@ def get_storage_service() -> StorageService:
     from app.config import settings
 
     if settings.storage_backend == "s3":
-        return S3StorageService(settings.s3_bucket, settings.s3_region)
+        return S3StorageService(settings.s3_bucket, settings.s3_region, settings.s3_endpoint_url)
     return LocalStorageService(settings.upload_dir)

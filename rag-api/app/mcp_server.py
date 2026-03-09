@@ -17,7 +17,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from app.services import auth, document_service, embedding, generation, ingestion, retrieval
+from app.services import auth, document_service, embedding, ingestion, retrieval
 from app.services.auth import AuthError
 from app.services.storage import get_storage_service
 
@@ -79,34 +79,40 @@ async def upload_document(filename: str, content_b64: str) -> dict[str, Any]:
 
 @mcp.tool()
 async def query_documents(question: str, top_k: int = 5) -> dict[str, Any]:
-    """Ask a question and get an answer grounded in your uploaded documents.
+    """Search your knowledge base and return relevant document chunks.
 
-    Returns an answer with citations showing source document and page.
+    Returns the most relevant chunks for the given question. Use the chunk
+    texts as context to answer the question — cite sources by filename and page.
+    Does not generate an answer; the caller synthesises the response.
     """
     account_id = get_account_id()
 
-    def _run() -> tuple[str, list[retrieval.RetrievedChunk]]:
+    def _run() -> list[retrieval.RetrievedChunk]:
         from app.db import SessionLocal
 
         query_emb = embedding.embed_query(question)
         with SessionLocal() as db:
-            chunks = retrieval.retrieve(query_emb, account_id, db, top_k)
-        answer, cited_chunks = generation.generate_answer(question, chunks)
-        return answer, cited_chunks
+            return retrieval.retrieve(query_emb, account_id, db, top_k)
 
-    answer, cited_chunks = await asyncio.to_thread(_run)
+    chunks = await asyncio.to_thread(_run)
     return {
-        "answer": answer,
-        "citations": [
+        "question": question,
+        "chunks": [
             {
+                "text": c.text,
                 "document_id": str(c.document_id),
-                "chunk_index": c.chunk_index,
+                "filename": c.filename,
                 "page_number": c.page_number,
-                "text": c.text[:200],
-                "score": c.score,
+                "chunk_index": c.chunk_index,
+                "score": round(c.score, 4),
             }
-            for c in cited_chunks
+            for c in chunks
         ],
+        "chunk_count": len(chunks),
+        "hint": (
+            "Use the chunks above as context to answer the question."
+            " Cite sources by filename and page_number."
+        ),
     }
 
 

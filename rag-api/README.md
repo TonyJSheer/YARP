@@ -3,7 +3,7 @@
 A RAG (Retrieval-Augmented Generation) backend you can connect directly to Claude as an MCP server. Upload your documents, then ask Claude questions — it will query your knowledge base and answer with citations.
 
 - **Embeddings**: local via `sentence-transformers` (no API key, no cost)
-- **LLM**: Anthropic Claude (via `ANTHROPIC_API_KEY`)
+- **LLM**: Anthropic Claude via `ANTHROPIC_API_KEY` (REST API only — not required for MCP)
 - **Vector store**: PostgreSQL + pgvector
 - **Auth**: per-tenant JWT tokens — each user only sees their own documents
 - **Interface**: MCP server (Claude Desktop / Claude Code) + REST API
@@ -15,7 +15,7 @@ A RAG (Retrieval-Augmented Generation) backend you can connect directly to Claud
 - [Docker](https://docs.docker.com/get-docker/) (for PostgreSQL)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - Python 3.12+
-- An [Anthropic API key](https://console.anthropic.com/)
+- An [Anthropic API key](https://console.anthropic.com/) (required only for the REST API — not needed for MCP use)
 
 ---
 
@@ -29,7 +29,7 @@ uv sync
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env — set ANTHROPIC_API_KEY and JWT_SECRET (see Environment Variables below)
+# Edit .env — set JWT_SECRET (required) and ANTHROPIC_API_KEY (REST API only)
 
 # 3. Start PostgreSQL
 docker compose up postgres -d
@@ -63,7 +63,6 @@ The MCP server runs as a subprocess spawned by the Claude client. No extra port 
       "env": {
         "MCP_AUTH_TOKEN": "<token from step 5>",
         "DATABASE_URL": "postgresql://rag:rag@localhost:5432/rag",
-        "ANTHROPIC_API_KEY": "<your-key>",
         "JWT_SECRET": "<same secret as your .env>"
       }
     }
@@ -82,7 +81,6 @@ The MCP server runs as a subprocess spawned by the Claude client. No extra port 
       "env": {
         "MCP_AUTH_TOKEN": "<token from step 5>",
         "DATABASE_URL": "postgresql://rag:rag@localhost:5432/rag",
-        "ANTHROPIC_API_KEY": "<your-key>",
         "JWT_SECRET": "<same secret as your .env>"
       }
     }
@@ -133,7 +131,7 @@ Once connected, Claude can call these tools on your behalf:
 | Tool | Description |
 |---|---|
 | `upload_document` | Upload a document (base64-encoded). Supported: `.txt`, `.md`, `.pdf` |
-| `query_documents` | Ask a question — returns a grounded answer with citations |
+| `query_documents` | Search your knowledge base — returns relevant chunks for Claude to synthesise |
 | `list_documents` | List all documents in your knowledge base |
 | `delete_document` | Delete a document and all its chunks |
 
@@ -269,6 +267,96 @@ MCP Server (app/mcp_server.py)       REST API (app/main.py)
 ```
 
 See `docs/ARCHITECTURE.md` for the full component map and data model.
+
+---
+
+## Cloud Deployment (Fly.io + Neon)
+
+Deploy the API and MCP server to Fly.io with [Neon](https://neon.tech) as the managed PostgreSQL backend (pgvector built in) and [Fly Tigris](https://fly.io/docs/tigris/) for S3-compatible file storage.
+
+### Prerequisites
+
+- [flyctl](https://fly.io/docs/getting-started/installing-flyctl/) installed and authenticated (`fly auth login`)
+- A [Neon](https://neon.tech) account (free tier is sufficient)
+- A [Fly.io](https://fly.io) account
+
+### One-Time Setup
+
+```bash
+# 1. Create the Fly app
+fly apps create rag-api
+
+# 2. Provision Fly Tigris object storage
+#    This creates a bucket and automatically sets AWS_ACCESS_KEY_ID,
+#    AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3, and BUCKET_NAME as Fly secrets.
+fly storage create
+
+# 3. Set remaining secrets (never put these in fly.toml)
+fly secrets set \
+  DATABASE_URL="<neon-pooled-connection-string>" \
+  JWT_SECRET="$(openssl rand -hex 32)" \
+  ANTHROPIC_API_KEY="<your-anthropic-key>" \
+  STORAGE_BACKEND="s3" \
+  S3_BUCKET="<tigris-bucket-name-from-step-2>"
+
+# 4. Run database migrations against Neon
+#    pgvector is pre-installed on Neon — no manual CREATE EXTENSION needed.
+DATABASE_URL=<neon-pooled-connection-string> make migrate
+```
+
+### Deploy
+
+```bash
+fly deploy
+```
+
+Fly.io builds the Docker image remotely. The embedding model is baked into the image at build time — no model download on startup.
+
+After deploy:
+
+```bash
+# Verify the API is up
+curl https://rag-api.fly.dev/health
+
+# Generate a token and test the documents endpoint
+TOKEN=$(JWT_SECRET=<secret> uv run python scripts/generate_token.py myaccount)
+curl https://rag-api.fly.dev/documents -H "Authorization: Bearer $TOKEN"
+```
+
+### Automatic Deploy via GitHub Actions
+
+Push to `main` triggers `.github/workflows/deploy.yml` automatically. Add `FLY_API_TOKEN` to your repository secrets:
+
+```
+GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+Name: FLY_API_TOKEN
+Value: <output of `fly auth token`>
+```
+
+### Connecting an MCP Client to the Cloud Deployment
+
+Port 8001 (MCP HTTP server) is internal only — Fly.io routes HTTPS by hostname, not port. Use `fly proxy` to open a WireGuard tunnel:
+
+```bash
+fly proxy 8001
+```
+
+Then configure your MCP client to connect through the tunnel:
+
+```json
+{
+  "mcpServers": {
+    "rag-api": {
+      "url": "http://localhost:8001/mcp",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
+    }
+  }
+}
+```
+
+Keep `fly proxy 8001` running while using the MCP client.
 
 ---
 
