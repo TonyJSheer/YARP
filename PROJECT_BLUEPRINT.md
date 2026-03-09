@@ -339,14 +339,17 @@ Phase 2+: containerised deployment to a simple platform (Fly.io, Railway, or ECS
 See `rag-api/docs/PHASE2_PLAN.md` for full architecture and rationale.
 Task specs: `rag-api/tasks/task_p2_01_*.md` through `task_p2_06_*.md`
 
-### Phase 3 — Async + Search Quality + Deployment
+### Phase 3 — MCP-Native Redesign, Cloud Deployment & Search Quality
 
-- Async ingestion worker (Redis + worker service) — for large files
-- Cloud deployment (Fly.io or ECS Fargate)
-- Hybrid search (BM25 + vector)
-- Reranking (Cohere or local model)
-- Metadata filtering
-- OAuth2 / token issuance service
+> See `rag-api/docs/PHASE3_PLAN.md` for full architecture and rationale.
+> Task specs: `rag-api/tasks/task_p3_01_*.md` through `task_p3_06_*.md`
+
+- [ ] P3-01: MCP-native query — return chunks as context, not a server-generated answer (eliminates ANTHROPIC_API_KEY requirement for MCP)
+- [ ] P3-02: Cloud deployment — Fly.io app + Neon PostgreSQL + Fly Tigris storage; `fly deploy` CI/CD
+- [ ] P3-03: Async ingestion — Redis queue + worker process; `upload_document` returns immediately
+- [ ] P3-04: Hybrid search — BM25 (PostgreSQL FTS) + vector, merged via Reciprocal Rank Fusion
+- [ ] P3-05: Reranking — cross-encoder reranking (opt-in `rerank=true`)
+- [ ] P3-06: Collections + enhanced docs — named collections, .docx/.html/.csv formats, metadata, re-index
 
 ---
 
