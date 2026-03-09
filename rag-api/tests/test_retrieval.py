@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models.chunk import Chunk
 from app.models.document import Document
-from app.services.retrieval import MAX_TOP_K, RetrievedChunk, retrieve
+from app.services.retrieval import MAX_TOP_K, RetrievedChunk, _bm25_search, retrieve
 
 
 @pytest.fixture()
@@ -194,6 +194,200 @@ def test_retrieve_isolates_by_account_id(
         chunk_ids_b = {r.chunk_id for r in results_b}
         assert chunk_b.id in chunk_ids_b, "account-b chunk should appear for account-b"
         assert chunk_a.id not in chunk_ids_b, "account-a chunk must not appear for account-b"
+    finally:
+        db_session.query(Chunk).filter(Chunk.document_id.in_([doc_a.id, doc_b.id])).delete(
+            synchronize_session=False
+        )
+        db_session.query(Document).filter(Document.id.in_([doc_a.id, doc_b.id])).delete(
+            synchronize_session=False
+        )
+        db_session.commit()
+
+
+# ---------------------------------------------------------------------------
+# BM25 / Hybrid search tests (P3-04)
+# ---------------------------------------------------------------------------
+
+
+def test_bm25_finds_exact_keyword(db_session: Session) -> None:
+    """BM25 search for 'RFC 7519' must find a chunk containing that exact term."""
+    doc = Document(
+        account_id="bm25-test",
+        filename="rfc_test.txt",
+        content_type="text/plain",
+        sha256=uuid.uuid4().hex,
+        status="ready",
+    )
+    db_session.add(doc)
+    db_session.flush()
+
+    chunk = Chunk(
+        document_id=doc.id,
+        chunk_index=0,
+        text="RFC 7519 defines the JSON Web Token specification.",
+        embedding=[1.0] + [0.0] * 767,
+    )
+    db_session.add(chunk)
+    db_session.commit()
+
+    try:
+        results = _bm25_search("RFC 7519", "bm25-test", db_session, top_k=5)
+        chunk_ids = {r.chunk_id for r in results}
+        assert chunk.id in chunk_ids, "BM25 search must find the chunk with 'RFC 7519'"
+    finally:
+        db_session.delete(chunk)
+        db_session.delete(doc)
+        db_session.commit()
+
+
+def test_hybrid_merges_both_result_types(db_session: Session) -> None:
+    """Hybrid search must return chunks found by vector search AND by BM25."""
+    doc = Document(
+        account_id="hybrid-merge-test",
+        filename="hybrid_test.txt",
+        content_type="text/plain",
+        sha256=uuid.uuid4().hex,
+        status="ready",
+    )
+    db_session.add(doc)
+    db_session.flush()
+
+    # chunk_bm25: contains unique keyword; embedding is zeros (far from query)
+    chunk_bm25 = Chunk(
+        document_id=doc.id,
+        chunk_index=0,
+        text="RFC 7519 xyzzy_unique_keyword_hybrid_test specification document.",
+        embedding=[0.0, 1.0] + [0.0] * 766,
+    )
+    # chunk_vector: embedding matches query exactly; text has no keyword
+    chunk_vector = Chunk(
+        document_id=doc.id,
+        chunk_index=1,
+        text="Some generic content without any special keywords at all.",
+        embedding=[1.0, 0.0] + [0.0] * 766,
+    )
+    db_session.add_all([chunk_bm25, chunk_vector])
+    db_session.commit()
+
+    try:
+        query_embedding = [1.0, 0.0] + [0.0] * 766
+        results = retrieve(
+            query_embedding,
+            "hybrid-merge-test",
+            db_session,
+            top_k=10,
+            search_mode="hybrid",
+            query_text="RFC 7519 xyzzy_unique_keyword_hybrid_test",
+        )
+        result_ids = {r.chunk_id for r in results}
+        assert chunk_vector.id in result_ids, "hybrid must include the vector-matched chunk"
+        assert chunk_bm25.id in result_ids, "hybrid must include the BM25-matched chunk"
+    finally:
+        db_session.query(Chunk).filter(Chunk.document_id == doc.id).delete()
+        db_session.delete(doc)
+        db_session.commit()
+
+
+def test_hybrid_is_default(db_session: Session) -> None:
+    """Calling retrieve() without search_mode uses hybrid mode by default."""
+    doc = Document(
+        account_id="hybrid-default-test",
+        filename="default_mode.txt",
+        content_type="text/plain",
+        sha256=uuid.uuid4().hex,
+        status="ready",
+    )
+    db_session.add(doc)
+    db_session.flush()
+
+    chunk = Chunk(
+        document_id=doc.id,
+        chunk_index=0,
+        text="default mode test chunk content here",
+        embedding=[1.0] + [0.0] * 767,
+    )
+    db_session.add(chunk)
+    db_session.commit()
+
+    try:
+        # No search_mode arg — must default to "hybrid" without error
+        query_embedding = [1.0] + [0.0] * 767
+        results = retrieve(
+            query_embedding,
+            "hybrid-default-test",
+            db_session,
+            top_k=5,
+            query_text="default mode test chunk",
+        )
+        assert isinstance(results, list)
+        chunk_ids = {r.chunk_id for r in results}
+        assert chunk.id in chunk_ids
+    finally:
+        db_session.delete(chunk)
+        db_session.delete(doc)
+        db_session.commit()
+
+
+def test_account_isolation_preserved_in_hybrid(db_session: Session) -> None:
+    """Hybrid search must not return chunks belonging to a different account."""
+    doc_a = Document(
+        account_id="hybrid-acct-a",
+        filename="acct_a.txt",
+        content_type="text/plain",
+        sha256=uuid.uuid4().hex,
+        status="ready",
+    )
+    doc_b = Document(
+        account_id="hybrid-acct-b",
+        filename="acct_b.txt",
+        content_type="text/plain",
+        sha256=uuid.uuid4().hex,
+        status="ready",
+    )
+    db_session.add_all([doc_a, doc_b])
+    db_session.flush()
+
+    chunk_a = Chunk(
+        document_id=doc_a.id,
+        chunk_index=0,
+        text="isolation test RFC 7519 xyzzy_acct_isolation chunk for account a",
+        embedding=[1.0] + [0.0] * 767,
+    )
+    chunk_b = Chunk(
+        document_id=doc_b.id,
+        chunk_index=0,
+        text="isolation test RFC 7519 xyzzy_acct_isolation chunk for account b",
+        embedding=[1.0] + [0.0] * 767,
+    )
+    db_session.add_all([chunk_a, chunk_b])
+    db_session.commit()
+
+    try:
+        query_embedding = [1.0] + [0.0] * 767
+
+        results_a = retrieve(
+            query_embedding,
+            "hybrid-acct-a",
+            db_session,
+            top_k=20,
+            search_mode="hybrid",
+            query_text="RFC 7519 xyzzy_acct_isolation",
+        )
+        ids_a = {r.chunk_id for r in results_a}
+        assert chunk_a.id in ids_a, "account-a chunk must appear for account-a"
+        assert chunk_b.id not in ids_a, "account-b chunk must not appear for account-a"
+
+        results_b = retrieve(
+            query_embedding,
+            "hybrid-acct-b",
+            db_session,
+            top_k=20,
+            search_mode="hybrid",
+            query_text="RFC 7519 xyzzy_acct_isolation",
+        )
+        ids_b = {r.chunk_id for r in results_b}
+        assert chunk_b.id in ids_b, "account-b chunk must appear for account-b"
+        assert chunk_a.id not in ids_b, "account-a chunk must not appear for account-b"
     finally:
         db_session.query(Chunk).filter(Chunk.document_id.in_([doc_a.id, doc_b.id])).delete(
             synchronize_session=False

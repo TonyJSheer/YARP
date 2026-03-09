@@ -33,7 +33,14 @@ async def query_endpoint(
         )
 
     query_vec = embedding.embed_query(req.question)
-    chunks = retrieval.retrieve(query_vec, account_id, db, top_k=req.top_k)
+    chunks = retrieval.retrieve(
+        query_vec,
+        account_id,
+        db,
+        top_k=req.top_k,
+        search_mode=req.search_mode,
+        query_text=req.question,
+    )
     answer, cited_chunks = generation.generate_answer(req.question, chunks)
 
     citations = [
@@ -67,7 +74,14 @@ async def query_stream(
     req = msgspec.json.decode(await request.body(), type=QueryRequest)
 
     query_vec = embedding.embed_query(req.question)
-    chunks = retrieval.retrieve(query_vec, account_id, db, top_k=req.top_k)
+    chunks = retrieval.retrieve(
+        query_vec,
+        account_id,
+        db,
+        top_k=req.top_k,
+        search_mode=req.search_mode,
+        query_text=req.question,
+    )
 
     def event_generator() -> Iterator[str]:
         for token in generation.generate_answer_stream(req.question, chunks):

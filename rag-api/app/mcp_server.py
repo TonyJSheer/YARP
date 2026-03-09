@@ -81,12 +81,18 @@ async def upload_document(filename: str, content_b64: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def query_documents(question: str, top_k: int = 5) -> dict[str, Any]:
+async def query_documents(
+    question: str,
+    top_k: int = 5,
+    search_mode: str = "hybrid",
+) -> dict[str, Any]:
     """Search your knowledge base and return relevant document chunks.
 
     Returns the most relevant chunks for the given question. Use the chunk
     texts as context to answer the question — cite sources by filename and page.
     Does not generate an answer; the caller synthesises the response.
+
+    search_mode: "vector" | "bm25" | "hybrid" (default: "hybrid")
     """
     account_id = get_account_id()
 
@@ -95,7 +101,14 @@ async def query_documents(question: str, top_k: int = 5) -> dict[str, Any]:
 
         query_emb = embedding.embed_query(question)
         with SessionLocal() as db:
-            return retrieval.retrieve(query_emb, account_id, db, top_k)
+            return retrieval.retrieve(
+                query_emb,
+                account_id,
+                db,
+                top_k=top_k,
+                search_mode=search_mode,
+                query_text=question,
+            )
 
     chunks = await asyncio.to_thread(_run)
     return {
