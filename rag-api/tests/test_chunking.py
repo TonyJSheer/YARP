@@ -138,4 +138,4 @@ startxref
 
 def test_extract_text_unsupported_raises() -> None:
     with pytest.raises(ValueError, match="Unsupported file type"):
-        extract_text("document.docx")
+        extract_text("document.xyz")

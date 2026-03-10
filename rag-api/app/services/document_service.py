@@ -115,7 +115,7 @@ def reindex_document(document_id: str, account_id: str, db: Session) -> int:
 
     vectors: list[list[float]] = embedding.embed_chunks([c.text for c in chunks])
     for chunk, vector in zip(chunks, vectors):
-        chunk.embedding = vector  # type: ignore[assignment]
+        chunk.embedding = vector
 
     db.commit()
     return len(chunks)

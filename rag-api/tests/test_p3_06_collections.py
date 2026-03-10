@@ -226,9 +226,7 @@ def test_docx_extraction(
 
     account_id = f"docx-{uuid.uuid4().hex[:8]}"
     with SessionLocal() as db:
-        doc_id, chunk_count = ingestion.ingest_from_bytes(
-            "test.docx", docx_bytes, account_id, db
-        )
+        doc_id, chunk_count = ingestion.ingest_from_bytes("test.docx", docx_bytes, account_id, db)
 
     assert chunk_count >= 1
     with SessionLocal() as db:
@@ -259,9 +257,7 @@ def test_html_extraction(
 
     account_id = f"html-{uuid.uuid4().hex[:8]}"
     with SessionLocal() as db:
-        doc_id, chunk_count = ingestion.ingest_from_bytes(
-            "page.html", html_content, account_id, db
-        )
+        doc_id, chunk_count = ingestion.ingest_from_bytes("page.html", html_content, account_id, db)
 
     assert chunk_count >= 1
     with SessionLocal() as db:
@@ -291,9 +287,7 @@ def test_csv_extraction(
 
     account_id = f"csv-{uuid.uuid4().hex[:8]}"
     with SessionLocal() as db:
-        doc_id, chunk_count = ingestion.ingest_from_bytes(
-            "data.csv", csv_bytes, account_id, db
-        )
+        doc_id, chunk_count = ingestion.ingest_from_bytes("data.csv", csv_bytes, account_id, db)
 
     assert chunk_count >= 1
     with SessionLocal() as db:

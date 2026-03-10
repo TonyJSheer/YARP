@@ -25,16 +25,28 @@ This RAG API becomes an MCP server. Claude (or any MCP-compatible AI) calls tool
 
 ## Architecture Overview
 
-```
-MCP Client (Claude Desktop / Claude Code / any MCP host)
-    │
-    │  MCP protocol (stdio or HTTP/SSE)
-    ▼
-MCP Server  ─── reuses ──►  Service Layer (ingestion, retrieval, generation)
-    │                              │
-    │ Bearer token → account_id   ▼
-    │                        PostgreSQL (pgvector)
-    └──────────────────────► S3 / Local Storage (account-scoped)
+```mermaid
+graph TD
+    Client["MCP Client\n(Claude Desktop / Claude Code / any MCP host)"]
+    REST["REST Clients\n(curl / HTTP)"]
+
+    subgraph server["Server Process"]
+        MCP["MCP Server\n(stdio or HTTP/SSE)"]
+        API["FastAPI\n(REST :8000)"]
+        Auth["JWT Auth\nBearer token → account_id"]
+        SL["Service Layer\n(ingestion · retrieval · generation)"]
+    end
+
+    PG["PostgreSQL + pgvector"]
+    Storage["S3 / Local Storage\n(account-scoped paths)"]
+
+    Client -->|"MCP protocol"| MCP
+    REST --> API
+    MCP --> Auth
+    API --> Auth
+    Auth --> SL
+    SL --> PG
+    SL --> Storage
 ```
 
 The REST API (FastAPI) remains alongside the MCP server — they share the same service layer. No logic is duplicated.
@@ -161,7 +173,7 @@ MCP_AUTH_TOKEN=<jwt>           # set in MCP client config
 - The service layer (`ingestion.py`, `chunking.py`, `embedding.py`, `retrieval.py`, `generation.py`) is unchanged — it gains an `account_id` parameter where needed
 - The REST API endpoints remain functional alongside the MCP server
 - PostgreSQL + pgvector remain the vector store
-- OpenAI remains the embedding + LLM provider
+- sentence-transformers (local) remains the embedding provider; Anthropic Claude remains the LLM
 - Docker Compose remains the local dev environment
 
 ---

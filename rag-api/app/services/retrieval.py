@@ -68,9 +68,7 @@ def retrieve(
     elif search_mode == "bm25":
         results = _bm25_search(query_text, account_id, db, fetch_k, collection)
     else:  # hybrid
-        results = _hybrid_search(
-            query_embedding, query_text, account_id, db, fetch_k, collection
-        )
+        results = _hybrid_search(query_embedding, query_text, account_id, db, fetch_k, collection)
 
     if rerank and results:
         from app.services.reranking import rerank as do_rerank
@@ -102,9 +100,7 @@ def _collection_clause(collection: str | None) -> str:
     return "AND d.collection = :collection" if collection is not None else ""
 
 
-def _base_params(
-    account_id: str, collection: str | None, **extra: Any
-) -> dict[str, Any]:
+def _base_params(account_id: str, collection: str | None, **extra: Any) -> dict[str, Any]:
     """Build the base parameter dict, including collection only when filtering."""
     params: dict[str, Any] = {"account_id": account_id, **extra}
     if collection is not None:
@@ -187,7 +183,9 @@ def _hybrid_search(
 ) -> list[RetrievedChunk]:
     """Reciprocal Rank Fusion of vector + BM25 results."""
     # Fetch candidates from both paths (wider pool for better fusion)
-    vector_results = _vector_search(query_embedding, account_id, db, top_k=20, collection=collection)
+    vector_results = _vector_search(
+        query_embedding, account_id, db, top_k=20, collection=collection
+    )
     bm25_results = _bm25_search(query_text, account_id, db, top_k=20, collection=collection)
 
     scores: dict[str, float] = {}

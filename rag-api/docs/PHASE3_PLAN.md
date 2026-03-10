@@ -57,21 +57,38 @@ Large PDFs can take 30–60 seconds to ingest. During that time the MCP tool cal
 
 ### Current behaviour
 
-```
-query_documents(question) →
-    embed(question) →
-    pgvector search →
-    Claude API: generate_answer(question, chunks) →
-    return {answer, citations}
+```mermaid
+sequenceDiagram
+    participant C as MCP Client
+    participant S as MCP Server
+    participant E as Embedder (local)
+    participant PG as pgvector
+    participant LLM as Anthropic Claude API
+
+    C->>S: query_documents(question)
+    S->>E: embed(question)
+    S->>PG: cosine similarity search
+    PG-->>S: top-K chunks
+    S->>LLM: generate_answer(question, chunks)
+    LLM-->>S: answer + citations
+    S-->>C: {answer, citations}
 ```
 
-### New behaviour
+### New behaviour (P3-01)
 
-```
-query_documents(question) →
-    embed(question) →
-    pgvector search →
-    return {chunks: [{text, document_id, filename, page, score}], question}
+```mermaid
+sequenceDiagram
+    participant C as MCP Client (Claude)
+    participant S as MCP Server
+    participant E as Embedder (local)
+    participant PG as pgvector
+
+    C->>S: query_documents(question)
+    S->>E: embed(question)
+    S->>PG: cosine similarity search
+    PG-->>S: top-K chunks
+    S-->>C: {question, chunks, hint}
+    Note over C: Claude synthesises answer<br/>using its own session
 ```
 
 The returned `chunks` become context in the calling Claude session's conversation. Claude synthesises the answer naturally, can ask follow-up questions, cite sources itself, and uses the caller's own token budget.
@@ -107,16 +124,31 @@ The returned `chunks` become context in the calling Claude session's conversatio
 
 ### Architecture After Deployment
 
-```
-Claude Desktop / Claude Code
-    │  MCP HTTP (Authorization: Bearer <jwt>)
-    ▼
-Fly.io app
-  ├── api process     (uvicorn, :8000)
-  └── mcp process     (uvicorn, :8001)
-        │
-        ├── Neon PostgreSQL + pgvector
-        └── Fly Tigris / S3
+```mermaid
+graph TD
+    Client["MCP Client\n(Claude Desktop / Claude Code)"]
+    Browser["REST Clients\n(curl / HTTP)"]
+
+    subgraph fly["Fly.io"]
+        API["api process\nuvicorn :8000"]
+        MCP["mcp process\nuvicorn :8001"]
+        Worker["worker process\n(async ingestion)"]
+    end
+
+    PG["Neon\nPostgreSQL + pgvector"]
+    Storage["Fly Tigris / S3\n(file storage)"]
+    Redis["Redis\n(job queue)"]
+
+    Client -->|"MCP HTTP\nAuthorization: Bearer <jwt>"| MCP
+    Browser --> API
+    API --> Redis
+    Worker -->|BRPOP| Redis
+    MCP --> PG
+    API --> PG
+    Worker --> PG
+    MCP --> Storage
+    API --> Storage
+    Worker --> Storage
 ```
 
 ### What Users Configure
@@ -144,19 +176,34 @@ Token generation stays the same — users generate their own JWT with the shared
 
 ### Current flow (synchronous)
 
-```
-upload_document →  save → extract → chunk → embed → store → return
-(blocks for 30–60s on large PDFs)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    C->>S: upload_document(file)
+    Note over S: save → extract → chunk → embed → store<br/>(blocks 30–60s for large PDFs)
+    S-->>C: {document_id, status: "ready"}
 ```
 
 ### New flow (async)
 
-```
-upload_document →  save → create job → return {document_id, status: "processing"}
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    participant Q as Redis Queue
+    participant W as Worker
 
-worker (background) → extract → chunk → embed → store → update status = "ready"
+    C->>S: upload_document(file)
+    S->>Q: LPUSH job(document_id)
+    S-->>C: {document_id, status: "processing"}
 
-get_document_status(document_id) → return {status, chunk_count}
+    W->>Q: BRPOP
+    Note over W: extract → chunk → embed → store
+    W->>W: UPDATE status = "ready"
+
+    C->>S: get_document_status(document_id)
+    S-->>C: {status: "ready", chunk_count: N}
 ```
 
 ### Implementation

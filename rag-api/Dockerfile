@@ -4,12 +4,16 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-COPY pyproject.toml .
-RUN uv sync --no-dev
+COPY pyproject.toml uv.lock ./
+# Install dependencies only (no project source yet) — maximises layer cache
+RUN uv sync --no-dev --frozen --no-install-project
 
 COPY app/ ./app/
 COPY migrations/ ./migrations/
 COPY alembic.ini .
+
+# Now install the project package itself (app/ is present)
+RUN uv sync --no-dev --frozen
 
 # Pre-download the embedding model at build time so startup is fast in production.
 # The model (~420MB) is baked into the image layer — no download on container start.
